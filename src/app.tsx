@@ -2,10 +2,20 @@ import React, { useState, useEffect } from "react";
 import { Text, Box, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { checkAuth, AuthState } from "./agents/auth.js";
-import { searchItems } from "./agents/search.js";
-import { SearchResult, CategorySuggestion, Listing } from "./types.js";
+import { searchItems, getListingDetails } from "./agents/search.js";
+import {
+  SearchResult,
+  CategorySuggestion,
+  Listing,
+  ListingDetail,
+} from "./types.js";
 
-type FocusedSection = "search" | "categories" | "products";
+type FocusedSection =
+  | "search"
+  | "categories"
+  | "products"
+  | "detail"
+  | "command";
 
 export default function App() {
   // Auth State
@@ -25,6 +35,15 @@ export default function App() {
   const [selectedCategoryName, setSelectedCategoryName] = useState<
     string | null
   >(null);
+
+  // Detail View State
+  const [selectedListing, setSelectedListing] = useState<ListingDetail | null>(
+    null
+  );
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  // Command Mode State
+  const [commandInput, setCommandInput] = useState("");
 
   // Navigation State
   const [focusedSection, setFocusedSection] =
@@ -64,13 +83,31 @@ export default function App() {
 
   // Input Handling
   useInput((input, key) => {
+    // Global Escape Handler
     if (key.escape) {
+      if (focusedSection === "command") {
+        setFocusedSection("search"); // Or revert to previous? Search is safe.
+        setCommandInput("");
+        return;
+      }
+
       setSearchResult(null);
       setQuery("");
       setCategoryId(undefined);
       setSelectedCategoryName(null);
       setPage(1);
       setFocusedSection("search");
+      return;
+    }
+
+    // Global Command Trigger (/)
+    if (
+      input === "/" &&
+      focusedSection !== "search" &&
+      focusedSection !== "command"
+    ) {
+      setFocusedSection("command");
+      setCommandInput("/");
       return;
     }
 
@@ -136,10 +173,22 @@ export default function App() {
       }
       if (key.rightArrow || key.return) {
         if (items[productIndex]) {
-          // Open URL (mock for now)
-          // console.log("Opening", items[productIndex].url);
-          // In a real TUI, maybe we can't open easily.
-          // We'll show a "Opening..." message or similar.
+          const item = items[productIndex];
+          setFocusedSection("detail");
+          setLoadingDetail(true);
+          // Fetch full details
+          getListingDetails(item.id)
+            .then((detail) => {
+              setSelectedListing(detail);
+            })
+            .catch((e) => {
+              setError(
+                e instanceof Error ? e.message : "Failed to load details"
+              );
+            })
+            .finally(() => {
+              setLoadingDetail(false);
+            });
         }
       }
 
@@ -157,8 +206,23 @@ export default function App() {
           performSearch(query, categoryId, newPage);
         }
       }
+    } else if (focusedSection === "detail") {
+      if (key.leftArrow) {
+        setFocusedSection("products");
+        setSelectedListing(null);
+      }
     }
   });
+
+  const handleCommandSubmit = (value: string) => {
+    const cmd = value.trim();
+    if (cmd === "/quit") {
+      process.exit(0);
+    }
+    // Handle other commands later
+    setCommandInput("");
+    setFocusedSection("search");
+  };
 
   const handleSearchSubmit = (value: string) => {
     setQuery(value);
@@ -166,14 +230,10 @@ export default function App() {
     setCategoryId(undefined);
     setSelectedCategoryName(null);
     performSearch(value, undefined, 1).then(() => {
-      // If categories exist, user can focus them.
-      // But let's keep focus on search or move to categories?
-      // User said: "when a category is selected jump to the product listing"
-      // But for initial search?
-      // Let's stay on search so user can refine, or maybe move to categories.
-      // Current behavior: focus categories if available.
-      // Let's stick to that.
-      // Actually, let's look at the result.
+      // Automatically focus products or categories to allow navigation and commands
+      // Prioritize products if available
+      setFocusedSection("products"); // Default to products so navigation works immediately
+      setProductIndex(0);
     });
   };
 
@@ -305,6 +365,65 @@ export default function App() {
     );
   };
 
+  const renderDetail = () => {
+    if (loadingDetail) {
+      return (
+        <Box marginTop={1}>
+          <Text color="yellow">Loading details...</Text>
+        </Box>
+      );
+    }
+
+    if (!selectedListing) {
+      return null;
+    }
+
+    return (
+      <Box
+        flexDirection="column"
+        marginTop={1}
+        borderStyle="round"
+        borderColor="white"
+        padding={1}>
+        <Text bold color="green">
+          {selectedListing.title}
+        </Text>
+        <Text color="yellow">{selectedListing.priceText}</Text>
+        <Text color="dim">ID: {selectedListing.id}</Text>
+
+        <Box marginTop={1}>
+          <Text>
+            {selectedListing.fullDescription || selectedListing.description}
+          </Text>
+        </Box>
+
+        <Box marginTop={1} flexDirection="column">
+          <Text color="cyan">Location: {selectedListing.location}</Text>
+          <Text color="cyan">Seller: {selectedListing.sellerName}</Text>
+          {selectedListing.paylivery && (
+            <Text color="magenta">✓ PayLivery Available</Text>
+          )}
+        </Box>
+
+        {selectedListing.attributes &&
+          Object.keys(selectedListing.attributes).length > 0 && (
+            <Box marginTop={1} flexDirection="column">
+              <Text bold>Attributes:</Text>
+              {Object.entries(selectedListing.attributes).map(([key, val]) => (
+                <Text key={key} color="dim">
+                  - {key}: {Array.isArray(val) ? val.join(", ") : val}
+                </Text>
+              ))}
+            </Box>
+          )}
+
+        <Box marginTop={1}>
+          <Text color="dim">Press Left Arrow to go back</Text>
+        </Box>
+      </Box>
+    );
+  };
+
   if (loading) {
     return <Text color="yellow">Checking authentication...</Text>;
   }
@@ -351,10 +470,24 @@ export default function App() {
         </Box>
       )}
 
-      {searchResult && (
+      {searchResult && focusedSection !== "detail" && (
         <Box flexDirection="column" marginTop={1}>
           {renderCategories()}
           {renderProducts()}
+        </Box>
+      )}
+
+      {focusedSection === "detail" && renderDetail()}
+
+      {focusedSection === "command" && (
+        <Box marginTop={1} borderStyle="round" borderColor="yellow">
+          <Text color="yellow">COMMAND: </Text>
+          <TextInput
+            value={commandInput}
+            onChange={setCommandInput}
+            onSubmit={handleCommandSubmit}
+            focus={true}
+          />
         </Box>
       )}
     </Box>
