@@ -38,3 +38,4 @@ coverage/
 .turbo/
 .cache/
 .opencode
+*.code-workspace
