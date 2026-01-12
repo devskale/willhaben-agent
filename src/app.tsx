@@ -17,6 +17,7 @@ import {
   SearchHistoryItem,
   StarredItem,
 } from "./agents/db.js";
+import { UserProfile } from "./agents/user.js";
 import {
   SearchResult,
   CategorySuggestion,
@@ -63,6 +64,8 @@ export default function App() {
 
   // Command Mode State
   const [commandInput, setCommandInput] = useState("");
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(false);
 
   // Navigation State
   const [focusedSection, setFocusedSection] =
@@ -367,10 +370,14 @@ export default function App() {
           }
         }
       }
+    } else if (focusedSection === "me") {
+      if (key.escape) {
+        setFocusedSection("search");
+      }
     }
   });
 
-  const handleCommandSubmit = (value: string) => {
+  const handleCommandSubmit = async (value: string) => {
     const cmd = value.trim();
 
     const context: CommandContext = {
@@ -381,9 +388,11 @@ export default function App() {
       setHistoryIndex,
       setStarredItemsList,
       setStarredIndex,
+      setUserProfile,
+      setIsLoading: setLoadingProfile,
     };
 
-    const executed = executeCommand(cmd, context);
+    const executed = await executeCommand(cmd, context);
 
     if (!executed) {
       // Handle unknown commands or just reset
@@ -724,6 +733,65 @@ export default function App() {
     );
   };
 
+  const renderUserProfile = () => {
+    if (loadingProfile) {
+      return (
+        <Box marginTop={1}>
+          <Text color="yellow">Loading profile...</Text>
+        </Box>
+      );
+    }
+
+    if (!userProfile) {
+      return (
+        <Box marginTop={1} flexDirection="column">
+          <Text color="red">Not authenticated or failed to load profile.</Text>
+          <Text color="dim">
+            (In this environment, you likely don't have valid cookies)
+          </Text>
+        </Box>
+      );
+    }
+
+    return (
+      <Box
+        flexDirection="column"
+        marginTop={1}
+        borderStyle="round"
+        borderColor="magenta"
+        paddingX={1}>
+        <Text bold color="magenta">
+          User Profile
+        </Text>
+        <Box flexDirection="column" marginTop={1}>
+          <Text>
+            <Text bold>Name:</Text> {userProfile.displayName}
+          </Text>
+          <Text>
+            <Text bold>Email:</Text> {userProfile.email}
+          </Text>
+          <Text>
+            <Text bold>ID:</Text> {userProfile.id}
+          </Text>
+          {userProfile.postCode && (
+            <Text>
+              <Text bold>Location:</Text> {userProfile.postCode}{" "}
+              {userProfile.city}
+            </Text>
+          )}
+          {userProfile.memberSince && (
+            <Text>
+              <Text bold>Member Since:</Text> {userProfile.memberSince}
+            </Text>
+          )}
+        </Box>
+        <Box marginTop={1}>
+          <Text color="dim">Esc: Back</Text>
+        </Box>
+      </Box>
+    );
+  };
+
   if (loading) {
     return <Text color="yellow">Checking authentication...</Text>;
   }
@@ -782,6 +850,8 @@ export default function App() {
       {focusedSection === "history" && renderHistory()}
 
       {focusedSection === "starred" && renderStarredItems()}
+
+      {focusedSection === "me" && renderUserProfile()}
 
       {focusedSection === "command" && (
         <Box

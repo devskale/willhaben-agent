@@ -53,4 +53,5 @@ export type FocusedSection =
   | "detail"
   | "command"
   | "history"
-  | "starred";
+  | "starred"
+  | "me";

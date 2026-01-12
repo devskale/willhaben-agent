@@ -5,6 +5,7 @@ import {
   getSearchHistory,
   getStarredItems,
 } from "./db.js";
+import { getUserProfile, UserProfile } from "./user.js";
 
 export interface CommandContext {
   exit: () => void;
@@ -14,9 +15,11 @@ export interface CommandContext {
   setHistoryIndex: (index: number) => void;
   setStarredItemsList: (items: StarredItem[]) => void;
   setStarredIndex: (index: number) => void;
+  setUserProfile: (profile: UserProfile | null) => void;
+  setIsLoading: (loading: boolean) => void;
 }
 
-export type CommandAction = (context: CommandContext) => void;
+export type CommandAction = (context: CommandContext) => void | Promise<void>;
 
 export interface Command {
   name: string;
@@ -56,6 +59,21 @@ export const COMMANDS: Command[] = [
     },
   },
   {
+    name: "/me",
+    description: "Show user profile",
+    action: async (ctx) => {
+      ctx.setIsLoading(true);
+      try {
+        const profile = await getUserProfile();
+        ctx.setUserProfile(profile);
+        ctx.setFocusedSection("me");
+        ctx.setCommandInput("");
+      } finally {
+        ctx.setIsLoading(false);
+      }
+    },
+  },
+  {
     name: "/quit",
     description: "Exit the application",
     action: (ctx) => {
@@ -68,13 +86,13 @@ export function getCommandNames(): string[] {
   return COMMANDS.map((c) => c.name);
 }
 
-export function executeCommand(
+export async function executeCommand(
   commandName: string,
   context: CommandContext
-): boolean {
+): Promise<boolean> {
   const cmd = COMMANDS.find((c) => c.name === commandName);
   if (cmd) {
-    cmd.action(context);
+    await cmd.action(context);
     return true;
   }
   return false;
