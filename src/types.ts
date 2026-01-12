@@ -45,3 +45,12 @@ export interface SearchResult {
   totalFound: number;
   categories: CategorySuggestion[];
 }
+
+export type FocusedSection =
+  | "search"
+  | "categories"
+  | "products"
+  | "detail"
+  | "command"
+  | "history"
+  | "starred";

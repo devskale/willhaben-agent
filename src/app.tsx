@@ -4,6 +4,11 @@ import TextInput from "ink-text-input";
 import { checkAuth, AuthState } from "./agents/auth.js";
 import { searchItems, getListingDetails } from "./agents/search.js";
 import {
+  executeCommand,
+  getCommandNames,
+  CommandContext,
+} from "./agents/command.js";
+import {
   toggleStar,
   isStarred,
   getStarredItems,
@@ -17,18 +22,8 @@ import {
   CategorySuggestion,
   Listing,
   ListingDetail,
+  FocusedSection,
 } from "./types.js";
-
-type FocusedSection =
-  | "search"
-  | "categories"
-  | "products"
-  | "detail"
-  | "command"
-  | "history"
-  | "starred";
-
-const COMMANDS = ["/search", "/history", "/starred", "/quit"];
 
 export default function App() {
   const { exit } = useApp();
@@ -159,7 +154,7 @@ export default function App() {
     // Command Autocomplete
     if (focusedSection === "command") {
       if (key.tab || key.rightArrow) {
-        const match = COMMANDS.find((c) => c.startsWith(commandInput));
+        const match = getCommandNames().find((c) => c.startsWith(commandInput));
         if (match) {
           setCommandInput(match);
         }
@@ -377,34 +372,24 @@ export default function App() {
 
   const handleCommandSubmit = (value: string) => {
     const cmd = value.trim();
-    if (cmd === "/quit") {
-      exit();
-      return;
-    }
-    if (cmd === "/search") {
+
+    const context: CommandContext = {
+      exit,
+      setCommandInput,
+      setFocusedSection,
+      setHistoryItems,
+      setHistoryIndex,
+      setStarredItemsList,
+      setStarredIndex,
+    };
+
+    const executed = executeCommand(cmd, context);
+
+    if (!executed) {
+      // Handle unknown commands or just reset
       setCommandInput("");
       setFocusedSection("search");
-      return;
     }
-    if (cmd === "/history") {
-      const history = getSearchHistory();
-      setHistoryItems(history);
-      setHistoryIndex(0);
-      setFocusedSection("history");
-      setCommandInput("");
-      return;
-    }
-    if (cmd === "/starred") {
-      const starred = getStarredItems();
-      setStarredItemsList(starred);
-      setStarredIndex(0);
-      setFocusedSection("starred");
-      setCommandInput("");
-      return;
-    }
-    // Handle other commands later
-    setCommandInput("");
-    setFocusedSection("search");
   };
 
   const handleSearchSubmit = (value: string) => {
@@ -814,11 +799,13 @@ export default function App() {
             />
           </Box>
           <Box marginTop={0}>
-            {COMMANDS.filter((c) => c.startsWith(commandInput)).map((c) => (
-              <Text key={c} color="dim">
-                {c}{" "}
-              </Text>
-            ))}
+            {getCommandNames()
+              .filter((c) => c.startsWith(commandInput))
+              .map((c) => (
+                <Text key={c} color="dim">
+                  {c}{" "}
+                </Text>
+              ))}
           </Box>
         </Box>
       )}
