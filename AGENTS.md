@@ -20,11 +20,15 @@ npm run build               # Compiles TypeScript to dist/
 ```
 willhaben/
 ├── src/
-│   ├── cli.tsx             # Entry point, renders App
-│   ├── app.tsx             # Main TUI component with search UI
+│   ├── cli.tsx              # Entry point, renders App
+│   ├── app.tsx              # Main TUI component with search UI
+│   ├── types.ts             # Shared TypeScript interfaces
 │   └── agents/
-│       ├── auth.ts         # Authentication via sweet-cookie
-│       └── search.ts       # Search and parsing logic
+│       ├── auth.ts          # Authentication via sweet-cookie
+│       ├── search.ts        # Search and parsing logic
+│       ├── db.ts            # SQLite database for favorites/history
+│       ├── command.ts       # Command mode parsing
+│       └── user.ts          # User preferences
 ├── package.json
 └── tsconfig.json
 ```
@@ -112,13 +116,12 @@ useInput((input, key) => {
 
 ## Testing
 
-No test framework configured. When adding tests with Vitest:
 ```bash
 # Run single test file
-npx vitest run src/agents/auth.test.ts
+npx vitest run src/agents/search.test.ts
 
 # Run all tests
-npx vitest
+npx vitest run
 
 # Watch mode during development
 npx vitest

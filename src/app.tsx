@@ -102,7 +102,11 @@ export default function App() {
 
     // Save to history (only on first page to avoid spamming history with pagination)
     if (p === 1) {
-      addSearchHistory(q, catId, catName);
+      try {
+        addSearchHistory(q, catId, catName);
+      } catch (e) {
+        // Silently ignore history save errors to avoid disrupting the UI
+      }
     }
 
     try {

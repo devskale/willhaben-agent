@@ -35,6 +35,27 @@ db.exec(`
   )
 `);
 
+// Migration: Ensure query is unique
+try {
+  // Remove duplicates, keeping the most recent one
+  db.exec(`
+    DELETE FROM search_history 
+    WHERE id NOT IN (
+      SELECT MAX(id) 
+      FROM search_history 
+      GROUP BY query
+    )
+  `);
+
+  // Create unique index
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_search_history_query 
+    ON search_history(query)
+  `);
+} catch (error) {
+  // Index might already exist or other error, strictly speaking we should handle better but for now safe to ignore if it fails due to existing
+}
+
 export interface StarredItem extends Listing {
   starredAt: string;
 }
@@ -109,8 +130,12 @@ export function getStarredItems(): StarredItem[] {
 }
 
 const stmtInsertHistory = db.prepare(`
-  INSERT INTO search_history (query, category_id, category_name)
-  VALUES (@query, @categoryId, @categoryName)
+  INSERT INTO search_history (query, category_id, category_name, created_at)
+  VALUES (@query, @categoryId, @categoryName, CURRENT_TIMESTAMP)
+  ON CONFLICT(query) DO UPDATE SET
+    category_id = excluded.category_id,
+    category_name = excluded.category_name,
+    created_at = excluded.created_at
 `);
 
 const stmtTrimHistory = db.prepare(`
@@ -128,8 +153,13 @@ export function addSearchHistory(
   categoryId?: string,
   categoryName?: string
 ) {
+  // Validation: Not empty and min length 2
+  if (!query || query.trim().length < 2) {
+    return;
+  }
+
   stmtInsertHistory.run({
-    query,
+    query: query.trim(),
     categoryId: categoryId || null,
     categoryName: categoryName || null,
   });

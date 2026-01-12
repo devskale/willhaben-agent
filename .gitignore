@@ -37,3 +37,4 @@ coverage/
 # Cache
 .turbo/
 .cache/
+.opencode
