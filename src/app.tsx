@@ -28,6 +28,8 @@ type FocusedSection =
   | "history"
   | "starred";
 
+const COMMANDS = ["/search", "/history", "/starred", "/quit"];
+
 export default function App() {
   const { exit } = useApp();
 
@@ -151,6 +153,16 @@ export default function App() {
         setFocusedSection("command");
         setCommandInput("/");
         return;
+      }
+    }
+
+    // Command Autocomplete
+    if (focusedSection === "command") {
+      if (key.tab || key.rightArrow) {
+        const match = COMMANDS.find((c) => c.startsWith(commandInput));
+        if (match) {
+          setCommandInput(match);
+        }
       }
     }
 
@@ -787,14 +799,27 @@ export default function App() {
       {focusedSection === "starred" && renderStarredItems()}
 
       {focusedSection === "command" && (
-        <Box marginTop={1} borderStyle="round" borderColor="yellow">
-          <Text color="yellow">COMMAND: </Text>
-          <TextInput
-            value={commandInput}
-            onChange={setCommandInput}
-            onSubmit={handleCommandSubmit}
-            focus={true}
-          />
+        <Box
+          marginTop={1}
+          borderStyle="round"
+          borderColor="yellow"
+          flexDirection="column">
+          <Box>
+            <Text color="yellow">COMMAND: </Text>
+            <TextInput
+              value={commandInput}
+              onChange={setCommandInput}
+              onSubmit={handleCommandSubmit}
+              focus={true}
+            />
+          </Box>
+          <Box marginTop={0}>
+            {COMMANDS.filter((c) => c.startsWith(commandInput)).map((c) => (
+              <Text key={c} color="dim">
+                {c}{" "}
+              </Text>
+            ))}
+          </Box>
         </Box>
       )}
     </Box>
