@@ -1,4 +1,4 @@
-# willhaben-tui
+# willhaben-agent
 
 A React-based Terminal User Interface for browsing willhaben.at.
 
