@@ -97,12 +97,13 @@ const parseListing = (item: any): Listing => {
 
 export const searchItems = async (
   keyword: string,
-  categoryId?: string
+  categoryId?: string,
+  page: number = 1
 ): Promise<SearchResult> => {
   const { cookies } = await checkAuth();
   const headers = getHeaders(cookies);
 
-  let url = `${BASE_URL}/iad/kaufen-und-verkaufen/marktplatz?keyword=${encodeURIComponent(keyword)}`;
+  let url = `${BASE_URL}/iad/kaufen-und-verkaufen/marktplatz?keyword=${encodeURIComponent(keyword)}&page=${page}`;
   if (categoryId) {
     url += `&ATTRIBUTE_TREE=${categoryId}`;
   }
