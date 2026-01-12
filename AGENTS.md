@@ -11,8 +11,8 @@ npm start                    # Runs: tsx src/cli.tsx
 # Type checking (run before committing)
 npx tsc --noEmit
 
-# Build for production (if adding build script in future)
-npm run build               # Add to package.json: tsc
+# Build for production
+npm run build               # Compiles TypeScript to dist/
 ```
 
 ## Project Structure
@@ -53,7 +53,7 @@ import { checkAuth } from "./agents/auth.js";
 - **Interfaces**: PascalCase (e.g., `AuthState`, `SearchResult`)
 - **Variables/functions**: camelCase (e.g., `searchItems`, `isAuthenticated`)
 - **Constants**: UPPER_SNAKE_CASE or camelCase for config objects
-- **Files**: kebab-case for directories, PascalCase for components (e.g., `app.tsx`, `cli.tsx`)
+- **Files**: PascalCase for components (e.g., `App.tsx`), kebab-case for utilities
 
 ### Error Handling
 - Use try/catch for async operations
@@ -82,7 +82,6 @@ try {
 - Use `finally` for cleanup
 
 ### Formatting
-- Use Prettier (not installed yet): `npx prettier --write src/`
 - 2-space indentation
 - Single quotes for strings
 - Trailing commas in multi-line objects/arrays
@@ -113,17 +112,26 @@ useInput((input, key) => {
 
 ## Testing
 
-No test framework configured. When adding tests:
-- Use Vitest: `npm install -D vitest`
-- Run single test: `npx vitest run src/agents/auth.test.ts`
-- Run all tests: `npx vitest`
+No test framework configured. When adding tests with Vitest:
+```bash
+# Run single test file
+npx vitest run src/agents/auth.test.ts
+
+# Run all tests
+npx vitest
+
+# Watch mode during development
+npx vitest
+```
 
 ## Linting
 
 No ESLint configured. When adding:
-- `npm install -D eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin`
-- Run lint: `npx eslint src/`
-- Fix auto-fixable: `npx eslint src/ --fix`
+```bash
+npm install -D eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin
+npx eslint src/
+npx eslint src/ --fix
+```
 
 ## Common Tasks
 
@@ -142,5 +150,5 @@ No ESLint configured. When adding:
 
 - Auth uses Chrome/Edge/Firefox/Safari cookies via `sweet-cookie`
 - Search parses `__NEXT_DATA__` from willhaben.at HTML
-- No build step required for development (tsx runs directly)
 - Node.js ESM mode (`"type": "module"` in package.json)
+- Run `npx tsc --noEmit` before committing to catch type errors
