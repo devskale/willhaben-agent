@@ -5,14 +5,17 @@ A React-based TUI for interacting with willhaben.at, powered by `Ink`. Uses the 
 ## Build Commands
 
 ```bash
+# Install dependencies
+npm install
+
 # Start development server
-npm start                    # Runs: tsx src/cli.tsx
+npm start                  # Runs: tsx src/cli.tsx
 
 # Type checking (run before committing)
 npx tsc --noEmit
 
 # Build for production
-npm run build               # Compiles TypeScript to dist/
+npm run build              # Compiles TypeScript to dist/
 ```
 
 ## Project Structure
