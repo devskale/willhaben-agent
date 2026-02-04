@@ -3,6 +3,7 @@ import { Box, Text, useInput } from "ink";
 import { ListingDetail } from "../types.js";
 import { writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
+import { getConfig, ASCII_CHAR_SETS } from "../agents/config.js";
 
 // ANSI escape code for clickable URL
 function clickableUrl(url: string, label?: string): string {
@@ -10,11 +11,12 @@ function clickableUrl(url: string, label?: string): string {
   return `\x1b]8;;${url}\x07${text}\x1b]8;;\x07`;
 }
 
-// ASCII character set (light to dark for visibility on dark bg)
-const ASCII_CHARS = " .·░▒▓█";
-
 // Convert image to ASCII art
-async function imageToAscii(imageUrl: string, maxWidth: number = 60): Promise<string | null> {
+async function imageToAscii(
+  imageUrl: string, 
+  maxWidth: number = 80, 
+  asciiChars: string = ASCII_CHAR_SETS.medium
+): Promise<string | null> {
   try {
     const response = await fetch(imageUrl);
     if (!response.ok) return null;
@@ -52,8 +54,8 @@ async function imageToAscii(imageUrl: string, maxWidth: number = 60): Promise<st
           const g = resizedBuffer[idx + 1];
           const b = resizedBuffer[idx + 2];
           const gray = Math.floor((r + g + b) / 3);
-          const charIndex = Math.floor((gray / 255) * (ASCII_CHARS.length - 1));
-          line += ASCII_CHARS[charIndex];
+          const charIndex = Math.floor((gray / 255) * (asciiChars.length - 1));
+          line += asciiChars[charIndex];
         }
         ascii += line + "\n";
       }
@@ -78,12 +80,22 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [asciiArt, setAsciiArt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [asciiWidth, setAsciiWidth] = useState<number>(80);
+  const [asciiContrast, setAsciiContrast] = useState<"low" | "medium" | "high">("medium");
 
   // Refs for async state management
   const convertingRef = useRef(false);
   const asciiArtRef = useRef<string | null>(null);
   const currentUrlRef = useRef<string | null>(null);
   const listingIdRef = useRef<string | null>(null);
+
+  // Load config
+  useEffect(() => {
+    getConfig().then((config) => {
+      setAsciiWidth(config.asciiWidth);
+      setAsciiContrast(config.asciiContrast);
+    });
+  }, []);
 
   // Handle keyboard
   useInput((input, key) => {
@@ -114,6 +126,10 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
     // If loading or no listing, skip
     if (loading || !listing) return;
 
+    // Clear cached ASCII when width changes
+    asciiArtRef.current = null;
+    setAsciiArt(null);
+
     const hasImages = (listing.images && listing.images.length > 0) || !!listing.imageUrl;
     if (!hasImages) return;
 
@@ -135,7 +151,8 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
     listingIdRef.current = cacheKey;
     setError(null);
 
-    imageToAscii(currentImage, 60)
+    const charSet = ASCII_CHAR_SETS[asciiContrast];
+    imageToAscii(currentImage, asciiWidth, charSet)
       .then((art) => {
         if (art) {
           asciiArtRef.current = art;
@@ -150,7 +167,7 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
       .finally(() => {
         convertingRef.current = false;
       });
-  }, [loading, listing, selectedImageIndex]);
+  }, [loading, listing, selectedImageIndex, asciiWidth, asciiContrast]);
 
   // Handle loading state
   if (loading) {
@@ -215,7 +232,7 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
           ) : asciiArt ? (
             <Box flexDirection="column">
               {asciiArt.split("\n").map((line, i) => (
-                <Text key={i} color="green">
+                <Text key={i} color="#ffb000">
                   {line}
                 </Text>
               ))}

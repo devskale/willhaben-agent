@@ -2,6 +2,7 @@
 
 import { getListingDetails } from "./src/agents/search.js";
 import { ListingDetail } from "../types.js";
+import { getConfig, ASCII_CHAR_SETS } from "./src/agents/config.js";
 
 // ANSI escape code for clickable URL
 function clickableUrl(url: string, label?: string): string {
@@ -10,7 +11,11 @@ function clickableUrl(url: string, label?: string): string {
 }
 
 // Simple grayscale ASCII conversion
-async function imageToAscii(imageUrl: string, maxWidth: number = 68): Promise<string | null> {
+async function imageToAscii(
+  imageUrl: string,
+  maxWidth: number,
+  asciiChars: string
+): Promise<string | null> {
   try {
     const response = await fetch(imageUrl);
     if (!response.ok) return null;
@@ -43,9 +48,9 @@ async function imageToAscii(imageUrl: string, maxWidth: number = 68): Promise<st
 
       await unlink(tempPath).catch(() => {});
 
-      // Convert to grayscale ASCII
+      // Convert to grayscale ASCII using config chars
       let ascii = "";
-      const chars = " .·░▒▓█"; // Light to dark for visibility on dark bg
+      const chars = asciiChars;
 
       for (let y = 0; y < targetHeight; y++) {
         let line = "";
@@ -79,18 +84,18 @@ async function imageToAscii(imageUrl: string, maxWidth: number = 68): Promise<st
 // Fallback: Fetch and do simple conversion
 async function simpleAsciiFromUrl(imageUrl: string, width: number): Promise<string | null> {
   try {
-    // Create a simple placeholder with brighter characters
+    const innerWidth = width - 4;
     const lines = [
-      "                                                  ",
-      "   ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄   ",
-      "  ████████████████████████████████████████████  ",
-      "  ██▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄██  ",
-      "  ██  ██  ██  ██  ██  ██  ██  ██  ██  ██  ██  ",
-      "  ██  ██  ██  ██  ██  ██  ██  ██  ██  ██  ██  ",
-      "  ██  ██  ██  ██  ██  ██  ██  ██  ██  ██  ██  ",
-      "  ██▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀██  ",
-      "   ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ",
-      "                                                  ",
+      " ".repeat(innerWidth),
+      " ".repeat(Math.floor((innerWidth - 30) / 2)) + "▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄" + " ".repeat(Math.ceil((innerWidth - 30) / 2)),
+      " ".repeat(Math.floor((innerWidth - 30) / 2)) + "██████████████████████████████" + " ".repeat(Math.ceil((innerWidth - 30) / 2)),
+      " ".repeat(Math.floor((innerWidth - 28) / 2)) + "████████████████████████████",
+      " ".repeat(innerWidth),
+      " ".repeat(Math.floor((innerWidth - 20) / 2)) + "[ 📷 IMAGE PREVIEW ]" + " ".repeat(Math.ceil((innerWidth - 20) / 2)),
+      " ".repeat(innerWidth),
+      " ".repeat(Math.floor((innerWidth - 30) / 2)) + "██████████████████████████████" + " ".repeat(Math.ceil((innerWidth - 30) / 2)),
+      " ".repeat(Math.floor((innerWidth - 30) / 2)) + "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀" + " ".repeat(Math.ceil((innerWidth - 30) / 2)),
+      " ".repeat(innerWidth),
     ];
     return lines.join("\n");
   } catch {
@@ -99,60 +104,64 @@ async function simpleAsciiFromUrl(imageUrl: string, width: number): Promise<stri
 }
 
 // Render product detail view to console
-function renderProductDetail(listing: ListingDetail, asciiArt: string | null = null): void {
+function renderProductDetail(listing: ListingDetail, asciiArt: string | null = null, width: number = 100): void {
   const hasImages = (listing.images && listing.images.length > 0) || !!listing.imageUrl;
   const imageUrl = listing.images?.[0] || listing.imageUrl || listing.url;
+  const innerWidth = width - 4;
 
   console.log("");
-  console.log("\x1b[36m┌" + "─".repeat(72) + "┐\x1b[0m"); // Cyan border
+  console.log("\x1b[36m┌" + "─".repeat(width - 2) + "┐\x1b[0m");
 
   // Header
-  const title = listing.title?.substring(0, 58) || "Unknown Product";
-  console.log("\x1b[36m│\x1b[0m " + (hasImages ? "\x1b[32;1m📷 IMG  \x1b[0m" : "\x1b[31mNO IMG  \x1b[0m") + title.padEnd(66 - title.length) + "\x1b[36m│\x1b[0m");
-  console.log("\x1b[36m├" + "─".repeat(72) + "┤\x1b[0m");
+  const title = listing.title?.substring(0, innerWidth - 12) || "Unknown Product";
+  console.log("\x1b[36m│\x1b[0m " + (hasImages ? "\x1b[32;1m📷 IMG  \x1b[0m" : "\x1b[31mNO IMG  \x1b[0m") + title.padEnd(innerWidth - 10 - title.length) + "\x1b[36m│\x1b[0m");
+  console.log("\x1b[36m├" + "─".repeat(width - 2) + "┤\x1b[0m");
 
   // Price and ID
   console.log("\x1b[36m│\x1b[0m \x1b[33;1m💰\x1b[0m " + (listing.priceText || listing.priceForDisplay || "N/A"));
   console.log("\x1b[36m│\x1b[0m \x1b[33;1m🏷️ \x1b[0m ID: " + listing.id);
-  console.log("\x1b[36m├" + "─".repeat(72) + "┤\x1b[0m");
+  console.log("\x1b[36m├" + "─".repeat(width - 2) + "┤\x1b[0m");
 
   // ASCII Art Image Preview
-  console.log("\x1b[36m│\x1b[0m \x1b[32;1m📷 Image Preview:\x1b[0m");
+  // Bernstein/Amber color: \x1b[38;5;214m
+  console.log("\x1b[36m│\x1b[0m \x1b[38;5;214m📷 Image Preview:\x1b[0m");
   console.log("\x1b[36m│\x1b[0m");
 
   if (asciiArt) {
-    // Show actual ASCII art with bright green color
+    // Show actual ASCII art with bernstein/amber color
     const lines = asciiArt.split("\n");
     lines.forEach((line) => {
       if (line.trim()) {
-        console.log("\x1b[32;1m│ " + line.substring(0, 68) + "\x1b[0m");
+        console.log("\x1b[38;5;214m│ " + line.substring(0, innerWidth - 2) + "\x1b[0m");
       } else {
         console.log("\x1b[36m│\x1b[0m");
       }
     });
   } else {
     // Show placeholder
-    console.log("\x1b[36m│\x1b[0m      \x1b[32;1m┌──────────────────────────────┐\x1b[0m");
-    console.log("\x1b[36m│\x1b[0m      \x1b[32;1m│\x1b[0m                              \x1b[32;1m│\x1b[0m");
-    console.log("\x1b[36m│\x1b[0m      \x1b[32;1m│\x1b[0m   \x1b[33;1m[ 📷 IMAGE PREVIEW ]\x1b[0m   \x1b[32;1m│\x1b[0m");
-    console.log("\x1b[36m│\x1b[0m      \x1b[32;1m│\x1b[0m                              \x1b[32;1m│\x1b[0m");
-    console.log("\x1b[36m│\x1b[0m      \x1b[32;1m└──────────────────────────────┘\x1b[0m");
+    const phWidth = Math.min(30, innerWidth - 4);
+    const phPad = Math.floor((innerWidth - 4 - phWidth) / 2);
+    console.log("\x1b[36m│\x1b[0m" + " ".repeat(phPad + 2) + "\x1b[38;5;214m┌" + "─".repeat(phWidth) + "┐\x1b[0m");
+    console.log("\x1b[36m│\x1b[0m" + " ".repeat(phPad + 2) + "\x1b[38;5;214m│\x1b[0m" + " ".repeat(phWidth) + "\x1b[38;5;214m│\x1b[0m");
+    console.log("\x1b[36m│\x1b[0m" + " ".repeat(phPad + 2) + "\x1b[38;5;214m│\x1b[0m \x1b[33;1m[ 📷 IMAGE PREVIEW ]\x1b[0m \x1b[38;5;214m│\x1b[0m");
+    console.log("\x1b[36m│\x1b[0m" + " ".repeat(phPad + 2) + "\x1b[38;5;214m│\x1b[0m" + " ".repeat(phWidth) + "\x1b[38;5;214m│\x1b[0m");
+    console.log("\x1b[36m│\x1b[0m" + " ".repeat(phPad + 2) + "\x1b[38;5;214m└" + "─".repeat(phWidth) + "┘\x1b[0m");
   }
   console.log("\x1b[36m│\x1b[0m");
-  console.log("\x1b[36m├" + "─".repeat(72) + "┤\x1b[0m");
+  console.log("\x1b[36m├" + "─".repeat(width - 2) + "┤\x1b[0m");
 
   // Clickable URL
   console.log("\x1b[36m│\x1b[0m \x1b[34;1m🔗 Image URL:\x1b[0m");
-  console.log("\x1b[36m│\x1b[0m   " + clickableUrl(imageUrl, imageUrl.substring(0, 65)));
+  console.log("\x1b[36m│\x1b[0m   " + clickableUrl(imageUrl, imageUrl.substring(0, innerWidth - 6)));
   console.log("\x1b[36m│\x1b[0m   \x1b[90m(Ctrl+Click or copy URL to view image)\x1b[0m");
-  console.log("\x1b[36m├" + "─".repeat(72) + "┤\x1b[0m");
+  console.log("\x1b[36m├" + "─".repeat(width - 2) + "┤\x1b[0m");
 
   // Description
   const desc = listing.fullDescription || listing.description || "No description";
   const cleanDesc = desc.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
   console.log("\x1b[36m│\x1b[0m \x1b[33;1m📝 Description:\x1b[0m");
-  console.log("\x1b[36m│\x1b[0m   " + cleanDesc.substring(0, 220));
-  console.log("\x1b[36m├" + "─".repeat(72) + "┤\x1b[0m");
+  console.log("\x1b[36m│\x1b[0m   " + cleanDesc.substring(0, innerWidth - 4));
+  console.log("\x1b[36m├" + "─".repeat(width - 2) + "┤\x1b[0m");
 
   // Details
   console.log("\x1b[36m│\x1b[0m \x1b[33;1m📍 Location:\x1b[0m " + (listing.location || "N/A"));
@@ -160,16 +169,16 @@ function renderProductDetail(listing: ListingDetail, asciiArt: string | null = n
   if (listing.paylivery) {
     console.log("\x1b[36m│\x1b[0m \x1b[32;1m✅ PayLivery Available\x1b[0m");
   }
-  console.log("\x1b[36m├" + "─".repeat(72) + "┤\x1b[0m");
+  console.log("\x1b[36m├" + "─".repeat(width - 2) + "┤\x1b[0m");
 
   // Footer
   console.log("\x1b[36m│\x1b[0m \x1b[33;1m🎯 Actions:\x1b[0m");
   console.log("\x1b[36m│\x1b[0m   [URL] Copy URL above to open in browser");
-  console.log("\x1b[36m└" + "─".repeat(72) + "┘\x1b[0m");
+  console.log("\x1b[36m└" + "─".repeat(width - 2) + "┘\x1b[0m");
   console.log("");
-  console.log("\x1b[90m═════════════════════════════════════════════════════════════════════════════════\x1b[0m");
+  console.log("\x1b[90m" + "═".repeat(width) + "\x1b[0m");
   console.log("\x1b[90mPress Ctrl+C to exit, or copy URL above to view image\x1b[0m");
-  console.log("\x1b[90m═════════════════════════════════════════════════════════════════════════════════\x1b[0m");
+  console.log("\x1b[90m" + "═".repeat(width) + "\x1b[0m");
   console.log("");
 }
 
@@ -187,6 +196,11 @@ async function main() {
     process.exit(1);
   }
 
+  // Load config
+  const config = await getConfig();
+  const width = config.asciiWidth;
+  const asciiChars = ASCII_CHAR_SETS[config.asciiContrast];
+
   console.log("Fetching product ID: " + productId + "...");
   console.log("");
 
@@ -198,13 +212,13 @@ async function main() {
     let asciiArt = null;
 
     if (imageUrl) {
-      console.log("Converting image to ASCII...");
-      asciiArt = await imageToAscii(imageUrl, 68);
+      console.log("Converting image to ASCII (width: " + width + ", contrast: " + config.asciiContrast + ")...");
+      asciiArt = await imageToAscii(imageUrl, width, asciiChars);
     }
 
     console.clear();
     console.log("");
-    renderProductDetail(listing, asciiArt);
+    renderProductDetail(listing, asciiArt, width);
   } catch (error) {
     console.error("Error fetching product:");
     console.error(error instanceof Error ? error.message : error);
