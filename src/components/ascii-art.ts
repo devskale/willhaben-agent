@@ -33,16 +33,30 @@ export const IMAGE_DOTS = `
 `;
 
 export function createImagePlaceholder(width: number = 20, height: number = 4): string {
-  const top = "─".repeat(width - 2);
+  // Handle edge cases
+  const safeWidth = Math.max(0, width);
+  const safeHeight = Math.max(0, height);
+  
+  // For very small dimensions, return minimal or empty
+  if (safeWidth < 4 || safeHeight < 2) {
+    return "";
+  }
+  
+  const top = "─".repeat(safeWidth - 2);
   const side = "│";
-  const middle = " ".repeat(width - 2);
-  const bottom = "─".repeat(width - 2);
-
-  return `
-┌${top}┐
+  const middle = " ".repeat(safeWidth - 2);
+  
+  // Create the middle lines based on height
+  const middleLineCount = Math.max(0, safeHeight - 2);
+  const middleLines = Array(middleLineCount)
+    .fill(`${side}${middle}${side}`)
+    .join("\n");
+  
+  return `┌${top}┐
 ${side}${middle}${side}
+${middleLines}
 ${side}${middle}${side}
-└${bottom}┘`;
+└${top}┘`;
 }
 
 export function createImageFrame(hasImage: boolean): string {

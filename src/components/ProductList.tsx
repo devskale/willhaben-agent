@@ -1,7 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { Listing, SearchResult } from "../types.js";
-import { createImageFrame } from "./ascii-art.js";
+import { createImagePlaceholder } from "./ascii-art.js";
 
 interface ProductListProps {
   searchResult: SearchResult | null;
@@ -60,10 +60,10 @@ export function ProductList({
               borderColor={borderColor}
               paddingX={1}
             >
-              {/* ASCII Image Preview */}
+              {/* ASCII Image Preview Indicator */}
               <Box marginBottom={0}>
                 <Text color="cyan">
-                  {hasImage ? createImageFrame(true) : "  "}
+                  {hasImage ? createImagePlaceholder(30, 3) : "  "}
                 </Text>
               </Box>
 
@@ -72,7 +72,8 @@ export function ProductList({
                 <Box width="60%">
                   <Text color={isSelected ? "green" : "white"} bold={isSelected}>
                     {isStarredItem ? "★ " : ""}
-                    {item.title}
+                    {item.title.substring(0, 40)}
+                    {item.title.length > 40 ? "..." : ""}
                   </Text>
                 </Box>
                 <Box width="20%">
@@ -96,6 +97,11 @@ export function ProductList({
                 {item.paylivery && (
                   <Box>
                     <Text color="magenta"> ✓ PayLivery</Text>
+                  </Box>
+                )}
+                {hasImage && (
+                  <Box marginLeft={1}>
+                    <Text color="cyan">📷</Text>
                   </Box>
                 )}
               </Box>
