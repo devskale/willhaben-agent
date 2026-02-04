@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { Listing, SearchResult } from "../types.js";
+import { createImageFrame } from "./ascii-art.js";
 
 interface ProductListProps {
   searchResult: SearchResult | null;
@@ -49,6 +50,7 @@ export function ProductList({
           const isStarredItem = starredIds.has(item.id);
           const borderColor =
             isSelected && focused ? "green" : "gray";
+          const hasImage = !!item.imageUrl;
 
           return (
             <Box
@@ -58,6 +60,14 @@ export function ProductList({
               borderColor={borderColor}
               paddingX={1}
             >
+              {/* ASCII Image Preview */}
+              <Box marginBottom={0}>
+                <Text color="cyan">
+                  {hasImage ? createImageFrame(true) : "  "}
+                </Text>
+              </Box>
+
+              {/* Product Info */}
               <Box flexDirection="row" justifyContent="space-between">
                 <Box width="60%">
                   <Text color={isSelected ? "green" : "white"} bold={isSelected}>
@@ -74,6 +84,8 @@ export function ProductList({
                   <Text color="dim">{item.id}</Text>
                 </Box>
               </Box>
+
+              {/* Metadata Row */}
               <Box flexDirection="row" marginTop={0}>
                 <Box width="40%">
                   <Text color="yellow">{item.location}</Text>

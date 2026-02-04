@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { StarredItem } from "../agents/db.js";
+import { createImageFrame } from "./ascii-art.js";
 
 interface StarredViewProps {
   items: StarredItem[];
@@ -46,6 +47,7 @@ export function StarredView({
           const actualIndex = start + i;
           const isSelected = actualIndex === selectedIndex;
           const borderColor = isSelected ? "green" : "gray";
+          const hasImage = !!item.imageUrl;
 
           return (
             <Box
@@ -55,6 +57,14 @@ export function StarredView({
               borderColor={borderColor}
               paddingX={1}
             >
+              {/* ASCII Image Preview */}
+              <Box marginBottom={0}>
+                <Text color="cyan">
+                  {hasImage ? createImageFrame(true) : "  "}
+                </Text>
+              </Box>
+
+              {/* Product Info */}
               <Box flexDirection="row" justifyContent="space-between">
                 <Box width="60%">
                   <Text color={isSelected ? "green" : "white"} bold={isSelected}>
@@ -70,6 +80,8 @@ export function StarredView({
                   <Text color="dim">{item.id}</Text>
                 </Box>
               </Box>
+
+              {/* Metadata Row */}
               <Box flexDirection="row" marginTop={0}>
                 <Box width="40%">
                   <Text color="yellow">{item.location}</Text>
