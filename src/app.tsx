@@ -1,32 +1,13 @@
-import React, { useState, useEffect } from "react";
-import { Text, Box, useInput, useApp } from "ink";
-import TextInput from "ink-text-input";
+import React, { useState, useEffect, useCallback } from "react";
+import { useRenderer, useKeyboard } from "@opentui/react";
 import { checkAuth, AuthState } from "./agents/auth.js";
-import { searchItems, getListingDetails } from "./agents/search.js";
-import {
-  executeCommand,
-  getCommandNames,
-  CommandContext,
-} from "./agents/command.js";
-import {
-  toggleStar,
-  getStarredItems,
-  getSearchHistory,
-  addSearchHistory,
-  SearchHistoryItem,
-  StarredItem,
-} from "./agents/db.js";
-import { UserProfile } from "./agents/user.js";
-import {
-  SearchResult,
-  Listing,
-  ListingDetail,
-  FocusedSection,
-} from "./types.js";
-import { SearchBar, DetailView } from "./components/index.js";
+import { searchItems } from "./agents/search.js";
+import { getCommandNames, executeCommand, CommandContext } from "./agents/command.js";
+import { toggleStar, getStarredItems, getSearchHistory, addSearchHistory } from "./agents/db.js";
+import { SearchResult } from "./types.js";
 
-export default function App() {
-  const { exit } = useApp();
+export function App() {
+  const renderer = useRenderer();
 
   // Auth State
   const [auth, setAuth] = useState<AuthState>({
@@ -42,41 +23,36 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
-  const [selectedCategoryName, setSelectedCategoryName] = useState<
-    string | null
-  >(null);
+  const [selectedCategoryName, setSelectedCategoryName] = useState<string | null>(null);
 
-  // Search History for autocomplete
-  const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([]);
+  // Search History
+  const [searchHistory, setSearchHistory] = useState<any[]>([]);
   const [historyFocused, setHistoryFocused] = useState(false);
+  const [suggestionIndex, setSuggestionIndex] = useState(0);
 
-  // Detail View State
-  const [selectedListing, setSelectedListing] = useState<ListingDetail | null>(
-    null
-  );
-  const [loadingDetail, setLoadingDetail] = useState(false);
-
-  // Starred Items State
+  // Starred Items
   const [starredIds, setStarredIds] = useState<Set<string>>(new Set());
-  const [starredItemsList, setStarredItemsList] = useState<StarredItem[]>([]);
+  const [starredItemsList, setStarredItemsList] = useState<any[]>([]);
   const [starredIndex, setStarredIndex] = useState(0);
 
-  // Search History State
-  const [historyItems, setHistoryItems] = useState<SearchHistoryItem[]>([]);
+  // History
+  const [historyItems, setHistoryItems] = useState<any[]>([]);
   const [historyIndex, setHistoryIndex] = useState(0);
 
-  // Command Mode State
+  // Command Mode
   const [commandInput, setCommandInput] = useState("");
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
 
-  // Navigation State
-  const [focusedSection, setFocusedSection] =
-    useState<FocusedSection>("search");
-  const [previousSection, setPreviousSection] =
-    useState<FocusedSection>("products");
+  // Navigation
+  const [focusedSection, setFocusedSection] = useState<string>("search");
+  const [previousSection, setPreviousSection] = useState<string>("products");
   const [categoryIndex, setCategoryIndex] = useState(0);
   const [productIndex, setProductIndex] = useState(0);
+
+  // Detail View State
+  const [selectedListing, setSelectedListing] = useState<any>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
 
   // Initial Auth Check
   useEffect(() => {
@@ -87,321 +63,284 @@ export default function App() {
     };
     initAuth();
 
-    // Load initial starred items
-    const starred = getStarredItems();
-    setStarredIds(new Set(starred.map((s) => s.id)));
-
-    // Load search history for autocomplete
-    const history = getSearchHistory();
-    setSearchHistory(history);
+    // Load db data
+    try {
+      const starred = getStarredItems();
+      const history = getSearchHistory();
+      setStarredIds(new Set(starred.map((s: any) => s.id)));
+      setStarredItemsList(starred);
+      setSearchHistory(history);
+    } catch (e) {
+      console.error("DB error:", e);
+    }
   }, []);
 
-  // Helper to perform search
-  const performSearch = async (
-    q: string,
-    catId?: string,
-    p: number = 1,
-    catName?: string
-  ) => {
+  const performSearch = async (q: string, catId?: string, p: number = 1) => {
     if (!q.trim()) return null;
     setSearching(true);
     setError(null);
 
-    // Save to history (only on first page to avoid spamming history with pagination)
     if (p === 1) {
       try {
-        addSearchHistory(q, catId, catName);
-      } catch {
-        // Silently ignore history save errors to avoid disrupting the UI
-      }
+        addSearchHistory(q, catId);
+      } catch {}
     }
 
     try {
       const result = await searchItems(q, catId, p);
       setSearchResult(result);
-      // Reset indices if new search (page 1)
       if (p === 1) {
         setProductIndex(0);
-        setCategoryIndex(0); // Should we reset category index? Maybe not if just filtering.
+        setCategoryIndex(0);
       }
       return result;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Unknown search error");
+      setError(e instanceof Error ? e.message : "Unknown error");
       return null;
     } finally {
       setSearching(false);
     }
   };
 
-  // Input Handling
-  useInput((input, key) => {
-    // Global Escape Handler
-    if (key.escape) {
-      if (focusedSection === "command") {
-        setFocusedSection("search"); // Or revert to previous? Search is safe.
-        setCommandInput("");
+  useKeyboard(
+    (key) => {
+      const input = key.sequence;
+
+      // Allow delete/backspace to pass through to input components for text editing
+      if ((key.name === "backspace" || key.name === "delete") && (focusedSection === "search" || focusedSection === "command")) {
+        return; // Let input component handle text deletion
+      }
+
+      // Let Enter pass through in search mode for direct input
+      if ((key.name === "return" || key.name === "enter") && focusedSection === "search") {
+        if (query && query.trim()) {
+          handleSearchSubmit(query);
+        }
         return;
       }
 
-      // Close history suggestions if open
-      if (historyFocused) {
-        setHistoryFocused(false);
+      if (key.name === "escape") {
+        if (focusedSection === "command") {
+          setFocusedSection("search");
+          setCommandInput("");
+          return;
+        }
+        if (historyFocused) {
+          setHistoryFocused(false);
+          return;
+        }
+        setSearchResult(null);
+        setQuery("");
+        setCategoryId(undefined);
+        setSelectedCategoryName(null);
+        setPage(1);
+        setFocusedSection("search");
         return;
       }
 
-      setSearchResult(null);
-      setQuery("");
-      setCategoryId(undefined);
-      setSelectedCategoryName(null);
-      setPage(1);
-      setFocusedSection("search");
-      return;
-    }
-
-    // Global Command Trigger (/)
-    if (input === "/") {
-      const isSearchEmpty = focusedSection === "search" && query === "";
-      const isNotSearchOrCommand =
-        focusedSection !== "search" && focusedSection !== "command";
-
-      if (isSearchEmpty || isNotSearchOrCommand) {
+      if (input === "/") {
         setFocusedSection("command");
         setCommandInput("/");
         return;
       }
-    }
 
-    // Command Autocomplete
-    if (focusedSection === "command") {
-      if (key.tab || key.rightArrow) {
-        const match = getCommandNames().find((c) => c.startsWith(commandInput));
-        if (match) {
-          setCommandInput(match);
+      if (focusedSection === "command") {
+        if (key.name === "tab") {
+          const match = getCommandNames().find((c) => c.startsWith(commandInput));
+          if (match) setCommandInput(match);
         }
       }
-    }
 
-    if (focusedSection === "search") {
-      // Don't handle arrow keys when history is focused - SearchBar handles them
-      if (historyFocused) return;
-
-      // TextInput handles text input.
-      // Down arrow to move to categories if available, else products
-      if (key.downArrow) {
-        if (searchResult?.categories && searchResult.categories.length > 0) {
-          setFocusedSection("categories");
-          setCategoryIndex(0);
-        } else if (searchResult?.items && searchResult.items.length > 0) {
-          setFocusedSection("products");
-          setProductIndex(0);
+      if (focusedSection === "search") {
+        // If suggestions exist, navigate with up/down
+        const suggestions = getFilteredSuggestions();
+        if (suggestions.length > 0) {
+          if (key.name === "up") {
+            if (!historyFocused) {
+              setHistoryFocused(true);
+              setSuggestionIndex(0);
+            } else {
+              setSuggestionIndex((prev) => Math.max(0, prev - 1));
+            }
+            return;
+          }
+          if (key.name === "down") {
+            if (!historyFocused) {
+              setHistoryFocused(true);
+              setSuggestionIndex(0);
+            } else {
+              setSuggestionIndex((prev) => Math.min(prev + 1, suggestions.length - 1));
+            }
+            return;
+          }
+          // Enter submits selected suggestion
+          if (key.name === "return" || key.name === "enter") {
+            if (historyFocused && suggestions[suggestionIndex]) {
+              setHistoryFocused(false);
+              handleSearchSubmit(suggestions[suggestionIndex].query);
+            } else if (query && query.trim()) {
+              handleSearchSubmit(query);
+            }
+            return;
+          }
+          // Escape closes suggestions (keeps current query)
+          if (key.name === "escape") {
+            setHistoryFocused(false);
+            return;
+          }
         }
-      }
-    } else if (focusedSection === "categories") {
-      const categories = [
-        { id: "all", name: "All Categories", count: 0 },
-        ...(searchResult?.categories || []),
-      ];
 
-      if (key.upArrow) {
-        setCategoryIndex(Math.max(0, categoryIndex - 1));
-      }
-      if (key.downArrow) {
-        setCategoryIndex(Math.min(categories.length - 1, categoryIndex + 1));
-      }
-      if (key.leftArrow) {
-        setFocusedSection("search");
-      }
-      if (key.rightArrow || key.return) {
-        const selected = categories[categoryIndex];
-        const newCatId = selected.id === "all" ? undefined : selected.id;
-        const isReturn = key.return; // Capture key state synchronously
+        // Handle Enter when no suggestions exist
+        if (key.name === "return" || key.name === "enter") {
+          if (query && query.trim()) {
+            handleSearchSubmit(query);
+          }
+          return;
+        }
 
-        setCategoryId(newCatId);
-        setSelectedCategoryName(selected.id === "all" ? null : selected.name);
-        setPage(1);
-
-        // Trigger search
-        performSearch(query, newCatId, 1).then((result) => {
-          // After search, focus products if any ONLY if Enter was pressed
-          if (isReturn) {
+        // Down to categories/products
+        if (key.name === "down") {
+          if (searchResult?.categories?.length) {
+            setFocusedSection("categories");
+            setCategoryIndex(0);
+            return;
+          } else if (searchResult?.items?.length) {
             setFocusedSection("products");
             setProductIndex(0);
-          } else {
-            // Right Arrow (Drill down)
-            // If we drilled down to a leaf category (no sub-categories), switch to products
-            if (
-              result &&
-              (!result.categories || result.categories.length === 0)
-            ) {
+            return;
+          }
+        }
+      } else if (focusedSection === "categories") {
+        const categories = [{ id: "all", name: "All Categories", count: 0 }, ...(searchResult?.categories || [])];
+        if (key.name === "up") {
+          setCategoryIndex((prev) => Math.max(0, prev - 1));
+          return;
+        }
+        if (key.name === "down") {
+          setCategoryIndex((prev) => Math.min(categories.length - 1, prev + 1));
+          return;
+        }
+        if (key.name === "left") {
+          setFocusedSection("search");
+          return;
+        }
+        if (key.name === "right" || key.name === "return") {
+          const selected = categories[categoryIndex];
+          const newCatId = selected.id === "all" ? undefined : selected.id;
+          setCategoryId(newCatId);
+          setSelectedCategoryName(selected.id === "all" ? null : selected.name);
+          setPage(1);
+          performSearch(query, newCatId, 1).then((result) => {
+            if (key.name === "return" || !result?.categories?.length) {
               setFocusedSection("products");
               setProductIndex(0);
             }
-          }
-        });
-      }
-    } else if (focusedSection === "products") {
-      const items = searchResult?.items || [];
-
-      if (key.upArrow) {
-        setProductIndex(Math.max(0, productIndex - 1));
-      }
-      if (key.downArrow) {
-        setProductIndex(Math.min(items.length - 1, productIndex + 1));
-      }
-      if (key.leftArrow) {
-        if (searchResult?.categories && searchResult.categories.length > 0) {
-          setFocusedSection("categories");
-        } else {
-          setFocusedSection("search");
+          });
+          return;
         }
-      }
-      if (key.rightArrow || key.return) {
-        if (items[productIndex]) {
+      } else if (focusedSection === "products") {
+        const items = searchResult?.items || [];
+        if (key.name === "up") {
+          setProductIndex((prev) => Math.max(0, prev - 1));
+          return;
+        }
+        if (key.name === "down") {
+          setProductIndex((prev) => Math.min(items.length - 1, prev + 1));
+          return;
+        }
+        if (key.name === "left") {
+          if (searchResult?.categories?.length) setFocusedSection("categories");
+          else setFocusedSection("search");
+          return;
+        }
+        if ((key.name === "right" || key.name === "return") && items[productIndex]) {
           const item = items[productIndex];
           setPreviousSection("products");
           setFocusedSection("detail");
           setLoadingDetail(true);
-          // Fetch full details
-          getListingDetails(item.id)
-            .then((detail) => {
-              setSelectedListing(detail);
-            })
-            .catch((e) => {
-              setError(
-                e instanceof Error ? e.message : "Failed to load details"
-              );
-            })
-            .finally(() => {
-              setLoadingDetail(false);
-            });
+          import("./agents/search.js").then(({ getListingDetails }) => {
+            getListingDetails(item.id)
+              .then((detail) => {
+                setSelectedListing(detail);
+              })
+              .catch((e) => {
+                setError(e instanceof Error ? e.message : "Failed to load details");
+              })
+              .finally(() => {
+                setLoadingDetail(false);
+              });
+          });
         }
-      }
-
-      // Pagination & Starring
-      if (input === " ") {
-        // Toggle Star
-        if (items[productIndex]) {
+        if (input === " " && items[productIndex]) {
           const item = items[productIndex];
           const isNowStarred = toggleStar(item);
           setStarredIds((prev) => {
             const next = new Set(prev);
-            if (isNowStarred) {
-              next.add(item.id);
-            } else {
-              next.delete(item.id);
-            }
+            if (isNowStarred) next.add(item.id);
+            else next.delete(item.id);
             return next;
           });
         }
-      }
-
-      if (input === "p") {
-        if (page > 1) {
+        if (input === "p" && page > 1) {
           const newPage = page - 1;
           setPage(newPage);
           performSearch(query, categoryId, newPage);
         }
-      }
-      if (input === "n") {
-        const newPage = page + 1;
-        setPage(newPage);
-        performSearch(query, categoryId, newPage);
-      }
-    } else if (focusedSection === "detail") {
-      if (key.leftArrow) {
-        setFocusedSection(previousSection);
-        setSelectedListing(null);
-      }
-    } else if (focusedSection === "history") {
-      if (key.upArrow) {
-        setHistoryIndex(Math.max(0, historyIndex - 1));
-      }
-      if (key.downArrow) {
-        setHistoryIndex(Math.min(historyItems.length - 1, historyIndex + 1));
-      }
-      if (key.escape) {
-        setFocusedSection("search");
-      }
-      if (key.return) {
-        const selected = historyItems[historyIndex];
-        if (selected) {
+        if (input === "n") {
+          const newPage = page + 1;
+          setPage(newPage);
+          performSearch(query, categoryId, newPage);
+        }
+      } else if (focusedSection === "history") {
+        if (key.name === "up") setHistoryIndex((prev) => Math.max(0, prev - 1));
+        if (key.name === "down") setHistoryIndex((prev) => Math.min(historyItems.length - 1, prev + 1));
+        if (key.name === "escape") setFocusedSection("search");
+        if (key.name === "return" && historyItems[historyIndex]) {
+          const selected = historyItems[historyIndex];
           setQuery(selected.query);
           setCategoryId(selected.categoryId);
           setSelectedCategoryName(selected.categoryName || null);
           setPage(1);
           setFocusedSection("products");
-          performSearch(
-            selected.query,
-            selected.categoryId,
-            1,
-            selected.categoryName
-          );
+          performSearch(selected.query, selected.categoryId, 1);
         }
-      }
-    } else if (focusedSection === "starred") {
-      if (key.upArrow) {
-        setStarredIndex(Math.max(0, starredIndex - 1));
-      }
-      if (key.downArrow) {
-        setStarredIndex(
-          Math.min(starredItemsList.length - 1, starredIndex + 1)
-        );
-      }
-      if (key.escape) {
-        setFocusedSection("search");
-      }
-      if (key.return || key.rightArrow) {
-        if (starredItemsList[starredIndex]) {
+      } else if (focusedSection === "starred") {
+        if (key.name === "up") setStarredIndex((prev) => Math.max(0, prev - 1));
+        if (key.name === "down") setStarredIndex((prev) => Math.min(starredItemsList.length - 1, prev + 1));
+        if (key.name === "escape") setFocusedSection("search");
+        if (input === " " && starredItemsList[starredIndex]) {
           const item = starredItemsList[starredIndex];
-          setPreviousSection("starred");
-          setFocusedSection("detail");
-          setLoadingDetail(true);
-          getListingDetails(item.id)
-            .then((detail) => {
-              setSelectedListing(detail);
-            })
-            .catch((e) => {
-              // Fallback to stored details if fetch fails?
-              // For now, just show error
-              setError(
-                e instanceof Error ? e.message : "Failed to load details"
-              );
-            })
-            .finally(() => {
-              setLoadingDetail(false);
-            });
-        }
-      }
-      if (input === " ") {
-        // Unstar
-        if (starredItemsList[starredIndex]) {
-          const item = starredItemsList[starredIndex];
-          toggleStar(item); // We know it returns false (unstarred)
+          toggleStar(item);
           setStarredIds((prev) => {
             const next = new Set(prev);
             next.delete(item.id);
             return next;
           });
-          // Remove from current list immediately
-          const newList = starredItemsList.filter((i) => i.id !== item.id);
+          const newList = starredItemsList.filter((i: any) => i.id !== item.id);
           setStarredItemsList(newList);
-          if (starredIndex >= newList.length) {
-            setStarredIndex(Math.max(0, newList.length - 1));
-          }
+          if (starredIndex >= newList.length) setStarredIndex(Math.max(0, newList.length - 1));
+        }
+      } else if (focusedSection === "me") {
+        if (key.name === "escape") setFocusedSection("search");
+      } else if (focusedSection === "detail") {
+        if (key.name === "escape" || key.name === "left") {
+          setFocusedSection(previousSection);
+          setSelectedListing(null);
         }
       }
-    } else if (focusedSection === "me") {
-      if (key.escape) {
-        setFocusedSection("search");
-      }
-    }
-  });
+    },
+    { release: false }
+  );
+
+  const getFilteredSuggestions = () => {
+    if (query.trim().length === 0) return searchHistory.slice(0, 5);
+    return searchHistory.filter((h) => h.query.toLowerCase().includes(query.toLowerCase())).slice(0, 5);
+  };
 
   const handleCommandSubmit = async (value: string) => {
     const cmd = value.trim();
-
     const context: CommandContext = {
-      exit,
+      exit: () => renderer.destroy(),
       setCommandInput,
       setFocusedSection,
       setHistoryItems,
@@ -410,449 +349,231 @@ export default function App() {
       setStarredIndex,
       setUserProfile,
       setIsLoading: setLoadingProfile,
+      searchInputRef: { current: null },
     };
-
-    const executed = await executeCommand(cmd, context);
-
-    if (!executed) {
-      // Handle unknown commands or just reset
+    await executeCommand(cmd, context);
+    if (cmd !== "/search" && cmd !== "/history" && cmd !== "/starred" && cmd !== "/me") {
       setCommandInput("");
       setFocusedSection("search");
     }
   };
 
   const handleSearchSubmit = (value: string) => {
+    if (!value || !value.trim()) return;
     setQuery(value);
     setPage(1);
     setCategoryId(undefined);
     setSelectedCategoryName(null);
     performSearch(value, undefined, 1).then(() => {
-      // Automatically focus products or categories to allow navigation and commands
-      // Prioritize products if available
-      setFocusedSection("products"); // Default to products so navigation works immediately
+      setFocusedSection("products");
       setProductIndex(0);
     });
   };
 
-  // Render Helpers
-  const renderCategories = () => {
-    if (!searchResult?.categories.length) return null;
-
-    const categories = [
-      { id: "all", name: "All Categories", count: 0 },
-      ...searchResult.categories,
-    ];
-
-    // Simple windowing
-    const windowSize = 10;
-    const start = Math.floor(categoryIndex / windowSize) * windowSize;
-    const end = Math.min(start + windowSize, categories.length);
-    const visibleCategories = categories.slice(start, end);
-
-    return (
-      <Box
-        flexDirection="column"
-        marginBottom={1}
-        borderStyle="round"
-        borderColor={focusedSection === "categories" ? "green" : "cyan"}
-        paddingX={1}>
-        <Text bold color={focusedSection === "categories" ? "green" : "cyan"}>
-          Categories (Select to filter):
-        </Text>
-        {visibleCategories.map((c, i) => {
-          const actualIndex = start + i;
-          const isSelected = actualIndex === categoryIndex;
-          return (
-            <Text
-              key={c.id}
-              color={isSelected ? "green" : "white"}
-              bold={isSelected}>
-              {isSelected ? "> " : "  "}
-              {c.name} {c.id !== "all" ? `(${c.count})` : ""}
-            </Text>
-          );
-        })}
-        {categories.length > end && <Text color="dim">...more</Text>}
-      </Box>
-    );
-  };
-
-  const renderProducts = () => {
-    if (!searchResult?.items.length) return null;
-
-    const items = searchResult.items;
-    // Windowing for products is not needed if we paginate?
-    // Wait, searchResult.items is just one page (usually 25 items).
-    // We can display all of them, or window them.
-    // 25 items might be too long for terminal.
-    // Let's window them to 10.
-
-    const windowSize = 10;
-    const start = Math.floor(productIndex / windowSize) * windowSize;
-    const end = Math.min(start + windowSize, items.length);
-    const visibleItems = items.slice(start, end);
-
-    return (
-      <Box flexDirection="column" marginTop={1}>
-        <Text bold>
-          Found {searchResult.totalFound} items
-          {selectedCategoryName ? ` in ${selectedCategoryName}` : ""}
-          {` (Page ${page})`} :
-        </Text>
-        <Box flexDirection="column" marginTop={1}>
-          {visibleItems.map((item, i) => {
-            const actualIndex = start + i;
-            const isSelected = actualIndex === productIndex;
-            const isStarredItem = starredIds.has(item.id);
-            const borderColor =
-              isSelected && focusedSection === "products" ? "green" : "gray";
-
-            return (
-              <Box
-                key={item.id}
-                flexDirection="column"
-                borderStyle={isSelected ? "double" : "single"}
-                borderColor={borderColor}
-                paddingX={1}>
-                <Box flexDirection="row" justifyContent="space-between">
-                  <Box width="60%">
-                    <Text
-                      color={isSelected ? "green" : "white"}
-                      bold={isSelected}>
-                      {isStarredItem ? "★ " : ""}
-                      {item.title}
-                    </Text>
-                  </Box>
-                  <Box width="20%">
-                    <Text color="green" bold>
-                      {item.priceText}
-                    </Text>
-                  </Box>
-                  <Box width="20%">
-                    <Text color="dim">{item.id}</Text>
-                  </Box>
-                </Box>
-                <Box flexDirection="row" marginTop={0}>
-                  <Box width="40%">
-                    <Text color="yellow">{item.location}</Text>
-                  </Box>
-                  <Box width="30%">
-                    <Text color="cyan">{item.sellerName}</Text>
-                  </Box>
-                  {item.paylivery && (
-                    <Box>
-                      <Text color="magenta"> ✓ PayLivery</Text>
-                    </Box>
-                  )}
-                </Box>
-              </Box>
-            );
-          })}
-          {items.length > end && (
-            <Text color="dim" italic>
-              ...and {items.length - end} more on this page
-            </Text>
-          )}
-          <Box marginTop={1}>
-            <Text color="dim">
-              Space: Star/Unstar | n: Next Page | p: Prev Page | Right: Open |
-              Left: Categories
-            </Text>
-          </Box>
-        </Box>
-      </Box>
-    );
-  };
-
-  const renderDetail = () => {
-    return (
-      <DetailView
-        listing={selectedListing}
-        loading={loadingDetail}
-        onBack={() => {
-          setFocusedSection(previousSection);
-          setSelectedListing(null);
-        }}
-      />
-    );
-  };
-
-  const renderHistory = () => {
-    if (historyItems.length === 0) {
-      return (
-        <Box marginTop={1}>
-          <Text color="dim">No search history.</Text>
-        </Box>
-      );
-    }
-
-    const windowSize = 10;
-    const start = Math.floor(historyIndex / windowSize) * windowSize;
-    const end = Math.min(start + windowSize, historyItems.length);
-    const visibleItems = historyItems.slice(start, end);
-
-    return (
-      <Box
-        flexDirection="column"
-        marginTop={1}
-        borderStyle="round"
-        borderColor="blue"
-        paddingX={1}>
-        <Text bold color="blue">
-          Search History (Enter to restore):
-        </Text>
-        {visibleItems.map((item, i) => {
-          const actualIndex = start + i;
-          const isSelected = actualIndex === historyIndex;
-          return (
-            <Text
-              key={item.id}
-              color={isSelected ? "green" : "white"}
-              bold={isSelected}>
-              {isSelected ? "> " : "  "}
-              {item.query}
-              {item.categoryName ? ` [${item.categoryName}]` : ""}
-              <Text color="dim">
-                {" "}
-                ({new Date(item.createdAt).toLocaleString()})
-              </Text>
-            </Text>
-          );
-        })}
-        {historyItems.length > end && <Text color="dim">...more</Text>}
-      </Box>
-    );
-  };
-
-  const renderStarredItems = () => {
-    if (starredItemsList.length === 0) {
-      return (
-        <Box marginTop={1}>
-          <Text color="dim">No starred items yet.</Text>
-        </Box>
-      );
-    }
-
-    const windowSize = 10;
-    const start = Math.floor(starredIndex / windowSize) * windowSize;
-    const end = Math.min(start + windowSize, starredItemsList.length);
-    const visibleItems = starredItemsList.slice(start, end);
-
-    return (
-      <Box
-        flexDirection="column"
-        marginTop={1}
-        borderStyle="round"
-        borderColor="yellow"
-        paddingX={1}>
-        <Text bold color="yellow">
-          Starred Items ({starredItemsList.length}):
-        </Text>
-        <Box flexDirection="column" marginTop={1}>
-          {visibleItems.map((item, i) => {
-            const actualIndex = start + i;
-            const isSelected = actualIndex === starredIndex;
-            const borderColor = isSelected ? "green" : "gray";
-
-            return (
-              <Box
-                key={item.id}
-                flexDirection="column"
-                borderStyle={isSelected ? "double" : "single"}
-                borderColor={borderColor}
-                paddingX={1}>
-                <Box flexDirection="row" justifyContent="space-between">
-                  <Box width="60%">
-                    <Text
-                      color={isSelected ? "green" : "white"}
-                      bold={isSelected}>
-                      ★ {item.title}
-                    </Text>
-                  </Box>
-                  <Box width="20%">
-                    <Text color="green" bold>
-                      {item.priceText}
-                    </Text>
-                  </Box>
-                  <Box width="20%">
-                    <Text color="dim">{item.id}</Text>
-                  </Box>
-                </Box>
-                <Box flexDirection="row" marginTop={0}>
-                  <Box width="40%">
-                    <Text color="yellow">{item.location}</Text>
-                  </Box>
-                  <Box width="30%">
-                    <Text color="cyan">{item.sellerName}</Text>
-                  </Box>
-                  {item.paylivery && (
-                    <Box>
-                      <Text color="magenta"> ✓ PayLivery</Text>
-                    </Box>
-                  )}
-                </Box>
-              </Box>
-            );
-          })}
-          {starredItemsList.length > end && (
-            <Text color="dim" italic>
-              ...and {starredItemsList.length - end} more
-            </Text>
-          )}
-          <Box marginTop={1}>
-            <Text color="dim">Space: Unstar | Enter: Details | Esc: Back</Text>
-          </Box>
-        </Box>
-      </Box>
-    );
-  };
-
-  const renderUserProfile = () => {
-    if (loadingProfile) {
-      return (
-        <Box marginTop={1}>
-          <Text color="yellow">Loading profile...</Text>
-        </Box>
-      );
-    }
-
-    if (!userProfile) {
-      return (
-        <Box marginTop={1} flexDirection="column">
-          <Text color="red">Not authenticated or failed to load profile.</Text>
-          <Text color="dim">
-            (In this environment, you likely don't have valid cookies)
-          </Text>
-        </Box>
-      );
-    }
-
-    return (
-      <Box
-        flexDirection="column"
-        marginTop={1}
-        borderStyle="round"
-        borderColor="magenta"
-        paddingX={1}>
-        <Text bold color="magenta">
-          User Profile
-        </Text>
-        <Box flexDirection="column" marginTop={1}>
-          <Text>
-            <Text bold>Name:</Text> {userProfile.displayName}
-          </Text>
-          <Text>
-            <Text bold>Email:</Text> {userProfile.email}
-          </Text>
-          <Text>
-            <Text bold>ID:</Text> {userProfile.id}
-          </Text>
-          {userProfile.postCode && (
-            <Text>
-              <Text bold>Location:</Text> {userProfile.postCode}{" "}
-              {userProfile.city}
-            </Text>
-          )}
-          {userProfile.memberSince && (
-            <Text>
-              <Text bold>Member Since:</Text> {userProfile.memberSince}
-            </Text>
-          )}
-        </Box>
-        <Box marginTop={1}>
-          <Text color="dim">Esc: Back</Text>
-        </Box>
-      </Box>
-    );
-  };
-
   if (loading) {
-    return <Text color="yellow">Checking authentication...</Text>;
+    return (
+      <box padding={2}>
+        <text fg="yellow">Checking authentication...</text>
+      </box>
+    );
   }
 
   if (!auth.isAuthenticated) {
     return (
-      <Box flexDirection="column">
-        <Text color="red">Authentication Failed: {auth.error}</Text>
-        <Text>
-          Please login to willhaben.at in your browser
-          (Chrome/Edge/Firefox/Safari) and try again.
-        </Text>
-      </Box>
+      <box flexDirection="column" padding={2}>
+        <text fg="red">Authentication Failed: {auth.error}</text>
+        <text>Please login to willhaben.at in your browser.</text>
+      </box>
     );
   }
 
   return (
-    <Box flexDirection="column" padding={1}>
-      <Text color="green" bold>
-        Willhaben CLI
-      </Text>
-      <Text color="dim">Authenticated via sweet-cookie</Text>
+    <box flexDirection="column" padding={1} width="100%" height="100%">
+      <text fg="green">Willhaben CLI</text>
+      <text fg="dim">Authenticated via sweet-cookie</text>
 
-      {/* Import SearchBar component */}
-      <SearchBar
-        query={query}
-        setQuery={setQuery}
-        onSubmit={handleSearchSubmit}
-        focused={focusedSection === "search"}
-        history={searchHistory}
-        historyFocused={historyFocused}
-        onHistoryFocus={setHistoryFocused}
-      />
+      <box flexDirection="column" marginTop={1}>
+        <box>
+          <text>Search: </text>
+          <input
+            value={query}
+            onChange={(value) => {
+              setQuery(value);
+              // Auto-select first matching suggestion when typing
+              const filtered = searchHistory.filter((h) =>
+                h.query.toLowerCase().includes(value.toLowerCase())
+              );
+              if (filtered.length > 0) {
+                setSuggestionIndex(0);
+              }
+              setHistoryFocused(false);
+            }}
+            onSubmit={() => {
+              // Enter submits selected suggestion if in history, otherwise current query
+              const suggestions = getFilteredSuggestions();
+              if (historyFocused && suggestions[suggestionIndex]) {
+                setQuery(suggestions[suggestionIndex].query);
+                setHistoryFocused(false);
+                handleSearchSubmit(suggestions[suggestionIndex].query);
+              } else if (query && query.trim()) {
+                handleSearchSubmit(query);
+              }
+            }}
+            placeholder="Type keyword or select from history..."
+            focused={focusedSection === "search"}
+          />
+        </box>
+
+        {focusedSection === "search" && getFilteredSuggestions().length > 0 && (
+          <box flexDirection="column" border borderStyle="single" borderColor={historyFocused ? "green" : "cyan"}>
+            <text fg="gray">Recent searches (↑↓ to navigate, Enter to select):</text>
+            {getFilteredSuggestions().map((item, index) => (
+              <text key={item.id} fg={index === suggestionIndex ? "green" : "white"} bg={index === suggestionIndex && historyFocused ? "gray" : undefined}>
+                {index === suggestionIndex ? "▶ " : "  "}
+                {item.query}
+              </text>
+            ))}
+            {historyFocused && <text fg="dim">  ↑↓ navigate · Enter select · Esc close</text>}
+          </box>
+        )}
+
+        {focusedSection === "search" && !getFilteredSuggestions().length && query && (
+          <box marginTop={0}>
+            <text fg="dim">Press Enter to search, ↓ to browse categories</text>
+          </box>
+        )}
+      </box>
 
       {searching && (
-        <Box marginTop={1}>
-          <Text color="blue">Searching for "{query}"...</Text>
-        </Box>
+        <box marginTop={1}>
+          <text fg="blue">Searching for "{query}"...</text>
+        </box>
       )}
 
       {error && (
-        <Box marginTop={1}>
-          <Text color="red">Error: {error}</Text>
-        </Box>
+        <box marginTop={1}>
+          <text fg="red">Error: {error}</text>
+        </box>
       )}
 
-      {searchResult && focusedSection !== "detail" && (
-        <Box flexDirection="column" marginTop={1}>
+      {searchResult && (
+        <box flexDirection="column" marginTop={1}>
           {renderCategories()}
           {renderProducts()}
-        </Box>
+        </box>
       )}
 
       {focusedSection === "detail" && renderDetail()}
 
-      {focusedSection === "history" && renderHistory()}
-
-      {focusedSection === "starred" && renderStarredItems()}
-
-      {focusedSection === "me" && renderUserProfile()}
-
       {focusedSection === "command" && (
-        <Box
-          marginTop={1}
-          borderStyle="round"
-          borderColor="yellow"
-          flexDirection="column">
-          <Box>
-            <Text color="yellow">COMMAND: </Text>
-            <TextInput
+        <box marginTop={1} border borderStyle="rounded" flexDirection="column">
+          <box>
+            <text fg="yellow">COMMAND: </text>
+            <input
               value={commandInput}
-              onChange={setCommandInput}
-              onSubmit={handleCommandSubmit}
-              focus={true}
+              onChange={(value) => setCommandInput(value)}
+              onSubmit={() => handleCommandSubmit(commandInput)}
+              placeholder="Type command..."
+              focused
             />
-          </Box>
-          <Box marginTop={0}>
-            {getCommandNames()
-              .filter((c) => c.startsWith(commandInput))
-              .map((c) => (
-                <Text key={c} color="dim">
-                  {c}{" "}
-                </Text>
-              ))}
-          </Box>
-        </Box>
+          </box>
+          <box marginTop={0}>
+            {getCommandNames().filter((c) => c.startsWith(commandInput)).map((c) => (
+              <text key={c} fg="dim">{c} </text>
+            ))}
+          </box>
+        </box>
       )}
-    </Box>
+    </box>
   );
+
+  function renderCategories() {
+    if (!searchResult?.categories.length) return null;
+    const categories = [{ id: "all", name: "All Categories", count: 0 }, ...searchResult.categories];
+    const isFocused = focusedSection === "categories";
+    return (
+      <box flexDirection="column" marginBottom={1}>
+        <text fg={isFocused ? "green" : "cyan"}>Categories (↓ to products, →/Enter to select):</text>
+        <box flexDirection="column" marginTop={0}>
+          {categories.slice(0, 8).map((c, i) => (
+            <text key={c.id} fg={i === categoryIndex && isFocused ? "green" : "gray"}>
+              {i === categoryIndex && isFocused ? "▶ " : "  "}
+              {c.name} {c.id !== "all" ? `(${c.count})` : ""}
+            </text>
+          ))}
+        </box>
+      </box>
+    );
+  }
+
+  function renderProducts() {
+    if (!searchResult?.items.length) return null;
+    const isFocused = focusedSection === "products";
+    return (
+      <box flexDirection="column" marginTop={1}>
+        <text>Found {searchResult.totalFound} items (Page {page}):</text>
+        <box flexDirection="column" marginTop={1}>
+          {searchResult.items.slice(0, 10).map((item, i) => {
+            const isSelected = i === productIndex && isFocused;
+            return (
+              <box key={item.id} flexDirection="row" justifyContent="space-between">
+                <box width="65%">
+                  <text fg={isSelected ? "green" : "white"}>
+                    {isSelected ? "▶ " : "  "}
+                    {starredIds.has(item.id) ? "★ " : ""}
+                    {item.title}
+                  </text>
+                </box>
+                <box width="15%">
+                  <text fg="green">{item.priceText}</text>
+                </box>
+                <box width="20%">
+                  <text fg="dim">{item.sellerName}</text>
+                </box>
+              </box>
+            );
+          })}
+        </box>
+        <box marginTop={1}>
+          <text fg="dim">Space: Star | n/p: Page | ↑↓: Navigate | →/Enter: Details</text>
+        </box>
+      </box>
+    );
+  }
+
+  function renderDetail() {
+    if (loadingDetail) {
+      return (
+        <box marginTop={1}>
+          <text fg="yellow">Loading details...</text>
+        </box>
+      );
+    }
+
+    if (!selectedListing) {
+      return null;
+    }
+
+    return (
+      <box flexDirection="column" marginTop={1} border borderStyle="rounded" borderColor="white">
+        <box flexDirection="row" justifyContent="space-between">
+          <box width="75%">
+            <text fg="green" bg="black"> {selectedListing.title?.substring(0, 50) || "No title"} </text>
+          </box>
+          <box width="25%">
+            <text fg="cyan">ID: {selectedListing.id}</text>
+          </box>
+        </box>
+        <text fg="yellow">{selectedListing.priceText}</text>
+        <box marginTop={1} flexDirection="column">
+          <text><strong>Location:</strong> {selectedListing.location}</text>
+          <text><strong>Seller:</strong> {selectedListing.sellerName}</text>
+          {selectedListing.paylivery && <text fg="magenta">✓ PayLivery Available</text>}
+        </box>
+        <box marginTop={1}>
+          <text fg="dim">←/Esc: Back to list</text>
+        </box>
+      </box>
+    );
+  }
 }
