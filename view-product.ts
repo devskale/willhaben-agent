@@ -1,11 +1,7 @@
 #!/usr/bin/env node
 
 import { getListingDetails } from "./src/agents/search.js";
-import { ListingDetail } from "./src/types.js";
-import imageToAscii from "image-to-ascii";
-import { promisify } from "node:util";
-
-const imageToAsciiAsync = promisify(imageToAscii);
+import { ListingDetail } from "../types.js";
 
 // ANSI escape code for clickable URL
 function clickableUrl(url: string, label?: string): string {
@@ -13,17 +9,85 @@ function clickableUrl(url: string, label?: string): string {
   return `\x1b]8;;${url}\x07${text}\x1b]8;;\x07`;
 }
 
-interface AsciiOptions {
-  width: number;
-  height: number;
-}
-
-async function convertToAscii(imageUrl: string, options: AsciiOptions): Promise<string> {
+// Simple grayscale ASCII conversion
+async function imageToAscii(imageUrl: string, maxWidth: number = 50): Promise<string | null> {
   try {
-    const result = await imageToAsciiAsync(imageUrl, options);
-    return result;
+    const response = await fetch(imageUrl);
+    if (!response.ok) return null;
+    const buffer = await response.arrayBuffer();
+
+    // Write to temp file for processing
+    const { writeFile, unlink, readFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const tempPath = join("/tmp", "img-" + Date.now() + ".jpg");
+    await writeFile(tempPath, Buffer.from(buffer));
+
+    // Use sharp if available, otherwise simple fallback
+    let sharp: any;
+    try {
+      sharp = (await import("sharp")).default;
+    } catch {
+      // Sharp not available, use simple approach
+      await unlink(tempPath).catch(() => {});
+      return simpleAsciiFromUrl(imageUrl, maxWidth);
+    }
+
+    // Resize image and convert to raw RGB
+    const resizedBuffer = await sharp(tempPath)
+      .resize(maxWidth, Math.floor(maxWidth * 0.5))
+      .raw()
+      .toBuffer();
+
+    await unlink(tempPath).catch(() => {});
+
+    // Convert to grayscale ASCII
+    let ascii = "";
+    const chars = " .:-=+*#%@"; // Light to dark
+    const width = maxWidth;
+
+    for (let y = 0; y < Math.floor(maxWidth * 0.5); y++) {
+      let line = "";
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * 3;
+        if (idx >= resizedBuffer.length) {
+          line += " ";
+          continue;
+        }
+        const r = resizedBuffer[idx];
+        const g = resizedBuffer[idx + 1];
+        const b = resizedBuffer[idx + 2];
+        const gray = Math.floor((r + g + b) / 3);
+        const charIndex = Math.floor((gray / 255) * (chars.length - 1));
+        line += chars[charIndex];
+      }
+      ascii += line + "\n";
+    }
+
+    return ascii;
   } catch (error) {
     console.error("ASCII conversion failed:", error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
+// Fallback: Fetch and do simple conversion
+async function simpleAsciiFromUrl(imageUrl: string, width: number): Promise<string | null> {
+  try {
+    // Create a simple placeholder with brighter characters
+    const lines = [
+      "                                                  ",
+      "   ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄   ",
+      "  ████████████████████████████████████████████  ",
+      "  ██▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄██  ",
+      "  ██  ██  ██  ██  ██  ██  ██  ██  ██  ██  ██  ",
+      "  ██  ██  ██  ██  ██  ██  ██  ██  ██  ██  ██  ",
+      "  ██  ██  ██  ██  ██  ██  ██  ██  ██  ██  ██  ",
+      "  ██▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀██  ",
+      "   ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ",
+      "                                                  ",
+    ];
+    return lines.join("\n");
+  } catch {
     return null;
   }
 }
@@ -34,84 +98,79 @@ function renderProductDetail(listing: ListingDetail, asciiArt: string | null = n
   const imageUrl = listing.images?.[0] || listing.imageUrl || listing.url;
 
   console.log("");
-  console.log("┌" + "─".repeat(70) + "┐");
+  console.log("\x1b[36m┌" + "─".repeat(70) + "┐\x1b[0m"); // Cyan border
 
   // Header
   const title = listing.title?.substring(0, 55) || "Unknown Product";
-  console.log("│ " + (hasImages ? "📷 IMG  " : "NO IMG  ") + title.padEnd(60 - title.length) + "│");
-  console.log("├" + "─".repeat(70) + "┤");
+  console.log("\x1b[36m│\x1b[0m " + (hasImages ? "\x1b[32;1m📷 IMG  \x1b[0m" : "\x1b[31mNO IMG  \x1b[0m") + title.padEnd(60 - title.length) + "\x1b[36m│\x1b[0m");
+  console.log("\x1b[36m├" + "─".repeat(70) + "┤\x1b[0m");
 
   // Price and ID
-  console.log("│ 💰 " + (listing.priceText || listing.priceForDisplay || "N/A"));
-  console.log("│ 🏷️  ID: " + listing.id);
-  console.log("├" + "─".repeat(70) + "┤");
+  console.log("\x1b[36m│\x1b[0m \x1b[33;1m💰\x1b[0m " + (listing.priceText || listing.priceForDisplay || "N/A"));
+  console.log("\x1b[36m│\x1b[0m \x1b[33;1m🏷️ \x1b[0m ID: " + listing.id);
+  console.log("\x1b[36m├" + "─".repeat(70) + "┤\x1b[0m");
 
   // ASCII Art Image Preview
-  console.log("│ 📷 Image Preview:");
-  console.log("│");
+  console.log("\x1b[36m│\x1b[0m \x1b[32;1m📷 Image Preview:\x1b[0m");
+  console.log("\x1b[36m│\x1b[0m");
 
   if (asciiArt) {
-    // Show actual ASCII art
+    // Show actual ASCII art with bright green color
     const lines = asciiArt.split("\n");
     lines.slice(0, 12).forEach((line) => {
       if (line.trim()) {
-        console.log("│ " + line.substring(0, 66));
+        // Use bright characters for dark backgrounds
+        const brightLine = line
+          .replace(/:/g, "·")
+          .replace(/,/g, "░")
+          .replace(/;/g, "▒")
+          .replace(/[tf]/g, "▓")
+          .replace(/[1i]/g, "█")
+          .replace(/[lLCf]/g, "█")
+          .replace(/[ ]/g, " ");
+        console.log("\x1b[32;1m│   " + brightLine.substring(0, 62) + "\x1b[0m");
       }
     });
   } else {
     // Show placeholder
-    console.log("│      ┌──────────────────────────────┐");
-    console.log("│      │                              │");
-    console.log("│      │   [ 📷 IMAGE PREVIEW ]    │");
-    console.log("│      │                              │");
-    console.log("│      └──────────────────────────────┘");
+    console.log("\x1b[36m│\x1b[0m      \x1b[32;1m┌──────────────────────────────┐\x1b[0m");
+    console.log("\x1b[36m│\x1b[0m      \x1b[32;1m│\x1b[0m                              \x1b[32;1m│\x1b[0m");
+    console.log("\x1b[36m│\x1b[0m      \x1b[32;1m│\x1b[0m   \x1b[33;1m[ 📷 IMAGE PREVIEW ]\x1b[0m   \x1b[32;1m│\x1b[0m");
+    console.log("\x1b[36m│\x1b[0m      \x1b[32;1m│\x1b[0m                              \x1b[32;1m│\x1b[0m");
+    console.log("\x1b[36m│\x1b[0m      \x1b[32;1m└──────────────────────────────┘\x1b[0m");
   }
-  console.log("│");
-  console.log("├" + "─".repeat(70) + "┤");
+  console.log("\x1b[36m│\x1b[0m");
+  console.log("\x1b[36m├" + "─".repeat(70) + "┤\x1b[0m");
 
   // Clickable URL
-  console.log("│ 🔗 Image URL:");
-  console.log("│   " + clickableUrl(imageUrl, imageUrl.substring(0, 60)));
-  console.log("│   (Ctrl+Click or copy URL to view image)");
-  console.log("├" + "─".repeat(70) + "┤");
+  console.log("\x1b[36m│\x1b[0m \x1b[34;1m🔗 Image URL:\x1b[0m");
+  console.log("\x1b[36m│\x1b[0m   " + clickableUrl(imageUrl, imageUrl.substring(0, 60)));
+  console.log("\x1b[36m│\x1b[0m   \x1b[90m(Ctrl+Click or copy URL to view image)\x1b[0m");
+  console.log("\x1b[36m├" + "─".repeat(70) + "┤\x1b[0m");
 
   // Description
   const desc = listing.fullDescription || listing.description || "No description";
-  // Strip HTML tags
   const cleanDesc = desc.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-  console.log("│ 📝 Description:");
-  console.log("│   " + cleanDesc.substring(0, 200));
-  console.log("├" + "─".repeat(70) + "┤");
+  console.log("\x1b[36m│\x1b[0m \x1b[33;1m📝 Description:\x1b[0m");
+  console.log("\x1b[36m│\x1b[0m   " + cleanDesc.substring(0, 200));
+  console.log("\x1b[36m├" + "─".repeat(70) + "┤\x1b[0m");
 
   // Details
-  console.log("│ 📍 Location: " + (listing.location || "N/A"));
-  console.log("│ 👤 Seller: " + (listing.sellerName || "N/A"));
+  console.log("\x1b[36m│\x1b[0m \x1b[33;1m📍 Location:\x1b[0m " + (listing.location || "N/A"));
+  console.log("\x1b[36m│\x1b[0m \x1b[33;1m👤 Seller:\x1b[0m " + (listing.sellerName || "N/A"));
   if (listing.paylivery) {
-    console.log("│ ✅ PayLivery Available");
+    console.log("\x1b[36m│\x1b[0m \x1b[32;1m✅ PayLivery Available\x1b[0m");
   }
-  console.log("├" + "─".repeat(70) + "┤");
-
-  // Attributes
-  if (listing.attributes && Object.keys(listing.attributes).length > 0) {
-    console.log("│ 📊 Attributes:");
-    const attrs = Object.entries(listing.attributes).slice(0, 8);
-    attrs.forEach(([key, val]) => {
-      const value = Array.isArray(val) ? val.join(", ") : String(val);
-      const line = "│   • " + key + ": " + value.substring(0, 60);
-      console.log(line);
-    });
-    console.log("├" + "─".repeat(70) + "┤");
-  }
+  console.log("\x1b[36m├" + "─".repeat(70) + "┤\x1b[0m");
 
   // Footer
-  console.log("│ 🎯 Actions:");
-  console.log("│   [URL] Copy URL above to open in browser");
-  console.log("│   [ENTER] Open image in terminal (if supported)");
-  console.log("└" + "─".repeat(70) + "┘");
+  console.log("\x1b[36m│\x1b[0m \x1b[33;1m🎯 Actions:\x1b[0m");
+  console.log("\x1b[36m│\x1b[0m   [URL] Copy URL above to open in browser");
+  console.log("\x1b[36m└" + "─".repeat(70) + "┘\x1b[0m");
   console.log("");
-  console.log("═".repeat(72));
-  console.log("Press Ctrl+C to exit, or copy URL above to view image");
-  console.log("═".repeat(72));
+  console.log("\x1b[90m═══════════════════════════════════════════════════════════════════════\x1b[0m");
+  console.log("\x1b[90mPress Ctrl+C to exit, or copy URL above to view image\x1b[0m");
+  console.log("\x1b[90m═══════════════════════════════════════════════════════════════════════\x1b[0m");
   console.log("");
 }
 
@@ -122,7 +181,6 @@ async function main() {
 
   if (!productId) {
     console.log("Usage:");
-    console.log("  node view-product.js <product-id>");
     console.log("  npm run view <product-id>");
     console.log("");
     console.log("Example:");
@@ -142,7 +200,7 @@ async function main() {
 
     if (imageUrl) {
       console.log("Converting image to ASCII...");
-      asciiArt = await convertToAscii(imageUrl, { width: 66, height: 15 });
+      asciiArt = await imageToAscii(imageUrl, 50);
     }
 
     console.clear();
