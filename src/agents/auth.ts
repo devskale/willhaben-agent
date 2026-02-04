@@ -91,8 +91,8 @@ export const checkAuth = async (): Promise<AuthState> => {
               },
             };
           }
-        } catch (e) {
-          // ignore parsing error
+        } catch {
+          // Ignore parsing error
         }
       }
     }

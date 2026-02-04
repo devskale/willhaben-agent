@@ -54,14 +54,18 @@ const parseListing = (item: any): Listing => {
       if (!priceText) {
         priceText = `€ ${price.toLocaleString("de-AT", { minimumFractionDigits: 2 })}`;
       }
-    } catch (e) {}
+    } catch {
+      // Ignore parsing errors
+    }
   } else if (attributes["PRICE"] && attributes["PRICE"][0]) {
     try {
       price = parseFloat(attributes["PRICE"][0]);
       if (!priceText) {
         priceText = `€ ${price.toLocaleString("de-AT", { minimumFractionDigits: 2 })}`;
       }
-    } catch (e) {}
+    } catch {
+      // Ignore parsing errors
+    }
   }
 
   // Location

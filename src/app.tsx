@@ -10,21 +10,20 @@ import {
 } from "./agents/command.js";
 import {
   toggleStar,
-  isStarred,
   getStarredItems,
-  addSearchHistory,
   getSearchHistory,
+  addSearchHistory,
   SearchHistoryItem,
   StarredItem,
 } from "./agents/db.js";
 import { UserProfile } from "./agents/user.js";
 import {
   SearchResult,
-  CategorySuggestion,
   Listing,
   ListingDetail,
   FocusedSection,
 } from "./types.js";
+import { SearchBar } from "./components/index.js";
 
 export default function App() {
   const { exit } = useApp();
@@ -46,6 +45,10 @@ export default function App() {
   const [selectedCategoryName, setSelectedCategoryName] = useState<
     string | null
   >(null);
+
+  // Search History for autocomplete
+  const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([]);
+  const [historyFocused, setHistoryFocused] = useState(false);
 
   // Detail View State
   const [selectedListing, setSelectedListing] = useState<ListingDetail | null>(
@@ -87,6 +90,10 @@ export default function App() {
     // Load initial starred items
     const starred = getStarredItems();
     setStarredIds(new Set(starred.map((s) => s.id)));
+
+    // Load search history for autocomplete
+    const history = getSearchHistory();
+    setSearchHistory(history);
   }, []);
 
   // Helper to perform search
@@ -104,7 +111,7 @@ export default function App() {
     if (p === 1) {
       try {
         addSearchHistory(q, catId, catName);
-      } catch (e) {
+      } catch {
         // Silently ignore history save errors to avoid disrupting the UI
       }
     }
@@ -133,6 +140,12 @@ export default function App() {
       if (focusedSection === "command") {
         setFocusedSection("search"); // Or revert to previous? Search is safe.
         setCommandInput("");
+        return;
+      }
+
+      // Close history suggestions if open
+      if (historyFocused) {
+        setHistoryFocused(false);
         return;
       }
 
@@ -169,6 +182,9 @@ export default function App() {
     }
 
     if (focusedSection === "search") {
+      // Don't handle arrow keys when history is focused - SearchBar handles them
+      if (historyFocused) return;
+
       // TextInput handles text input.
       // Down arrow to move to categories if available, else products
       if (key.downArrow) {
@@ -819,16 +835,16 @@ export default function App() {
       </Text>
       <Text color="dim">Authenticated via sweet-cookie</Text>
 
-      <Box marginTop={1}>
-        <Text>Search: </Text>
-        <TextInput
-          value={query}
-          onChange={setQuery}
-          onSubmit={handleSearchSubmit}
-          placeholder="Type keyword and press Enter..."
-          focus={focusedSection === "search"}
-        />
-      </Box>
+      {/* Import SearchBar component */}
+      <SearchBar
+        query={query}
+        setQuery={setQuery}
+        onSubmit={handleSearchSubmit}
+        focused={focusedSection === "search"}
+        history={searchHistory}
+        historyFocused={historyFocused}
+        onHistoryFocus={setHistoryFocused}
+      />
 
       {searching && (
         <Box marginTop={1}>
