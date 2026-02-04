@@ -6,6 +6,11 @@ dist/
 build/
 *.tsbuildinfo
 
+# Local databases
+*.db
+*.db-shm
+*.db-wal
+
 # Environment variables
 .env
 .env.local
