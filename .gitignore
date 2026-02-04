@@ -16,6 +16,11 @@ build/
 .env.local
 .env.*.local
 
+# Copied/synced skill files (local only)
+.agents/
+.pi/
+
+
 # OS files
 .DS_Store
 Thumbs.db
