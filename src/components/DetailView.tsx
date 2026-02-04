@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Box, Text, useInput } from "ink";
 import { ListingDetail } from "../types.js";
 import { writeFile, unlink } from "node:fs/promises";
@@ -65,13 +65,11 @@ async function imageToAscii(imageUrl: string, maxWidth: number = 60): Promise<st
         ascii += line + "\n";
       }
       return ascii;
-    } catch (sharpError) {
-      console.error("Sharp error:", sharpError);
+    } catch {
       await unlink(tempPath).catch(() => {});
       return null;
     }
-  } catch (error) {
-    console.error("Fetch error:", error);
+  } catch {
     return null;
   }
 }
@@ -86,6 +84,11 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [asciiArt, setAsciiArt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Use ref to track conversion state
+  const convertingRef = useRef(false);
+  const asciiArtRef = useRef<string | null>(null);
+  const currentUrlRef = useRef<string | null>(null);
 
   if (loading) {
     return (
@@ -104,23 +107,41 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
   const imageUrl = currentImage || listing.url;
   const totalImages = listing.images?.length || (listing.imageUrl ? 1 : 0);
 
-  // Convert image to ASCII
-  const convertImage = useCallback(async () => {
-    if (!hasImages || !imageUrl || asciiArt) return;
-
-    setError(null);
-    const art = await imageToAscii(imageUrl, 60);
-    if (art) {
-      setAsciiArt(art);
-    } else {
-      setError("Failed to convert image");
-    }
-  }, [hasImages, imageUrl, asciiArt]);
-
-  // Convert on mount
+  // Convert image to ASCII - useEffect with proper dependencies
   useEffect(() => {
-    convertImage();
-  }, [convertImage]);
+    // Skip if no image or already converted
+    if (!hasImages || !imageUrl) return;
+
+    // Skip if we already have the ASCII art for this URL
+    if (asciiArtRef.current && currentUrlRef.current === imageUrl) {
+      setAsciiArt(asciiArtRef.current);
+      return;
+    }
+
+    // Skip if already converting
+    if (convertingRef.current) return;
+
+    // Start conversion
+    convertingRef.current = true;
+    currentUrlRef.current = imageUrl;
+    setError(null);
+
+    imageToAscii(imageUrl, 60)
+      .then((art) => {
+        if (art) {
+          asciiArtRef.current = art;
+          setAsciiArt(art);
+        } else {
+          setError("Failed to convert image");
+        }
+      })
+      .catch((err) => {
+        setError("Error converting image: " + err.message);
+      })
+      .finally(() => {
+        convertingRef.current = false;
+      });
+  }, [hasImages, imageUrl]);
 
   // Handle keyboard for image navigation
   useInput((input, key) => {
@@ -133,10 +154,14 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
 
     if (key.leftArrow && selectedImageIndex > 0) {
       setSelectedImageIndex(selectedImageIndex - 1);
+      // Clear cached ASCII to force re-conversion
+      asciiArtRef.current = null;
       setAsciiArt(null);
     }
     if (key.rightArrow && selectedImageIndex < totalImages - 1) {
       setSelectedImageIndex(selectedImageIndex + 1);
+      // Clear cached ASCII to force re-conversion
+      asciiArtRef.current = null;
       setAsciiArt(null);
     }
   });
