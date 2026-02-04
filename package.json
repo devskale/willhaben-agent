@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/cli.tsx",
+    "view": "tsx view-product.tsx",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "type-check": "tsc --noEmit",
