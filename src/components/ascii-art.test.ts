@@ -52,8 +52,11 @@ describe("ascii-art", () => {
   });
 
   describe("createImageFrame function", () => {
-    it("should return empty when hasImage is false", () => {
-      expect(createImageFrame(false)).toBe("");
+    it("should return placeholder frame when hasImage is false", () => {
+      const result = createImageFrame(false);
+      expect(result).toContain("NO IMG");
+      expect(result).toContain("┌");
+      expect(result).toContain("┐");
     });
 
     it("should return frame when hasImage is true", () => {

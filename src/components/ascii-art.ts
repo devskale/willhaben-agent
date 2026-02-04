@@ -60,12 +60,20 @@ ${side}${middle}${side}
 }
 
 export function createImageFrame(hasImage: boolean): string {
-  if (!hasImage) return "";
-
-  return `
+  if (hasImage) {
+    return `
  ┌──────────────┐
  │              │
  │   [ 📷 IMG]  │
+ │              │
+ └──────────────┘`;
+  }
+
+  // Return placeholder frame for products without images
+  return `
+ ┌──────────────┐
+ │              │
+ │  [ NO IMG ]  │
  │              │
  └──────────────┘`;
 }

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { ListingDetail } from "../types.js";
-import { createImageFrame, createSmallIcon, createImagePlaceholder } from "./ascii-art.js";
+import { createImagePlaceholder, createImageFrame } from "./ascii-art.js";
 
 // ANSI escape code for clickable URL
 function clickableUrl(url: string, label?: string): string {
@@ -31,6 +31,7 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
 
   const hasImages = listing.images && listing.images.length > 0;
   const currentImage = hasImages ? listing.images[selectedImageIndex] : null;
+  const imageUrl = currentImage || listing.url;
 
   // Handle keyboard for image navigation
   useInput((input, key) => {
@@ -44,6 +45,11 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
     }
   });
 
+  // Parse attributes into an array
+  const attributes = listing.attributes
+    ? Object.entries(listing.attributes)
+    : [];
+
   return (
     <Box
       flexDirection="column"
@@ -52,64 +58,85 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
       borderColor="white"
       padding={1}
     >
-      {/* Product Header */}
-      <Text bold color="green" inverse>
-        {" " + listing.title.substring(0, 50) + (listing.title.length > 50 ? "..." : "") + " "}
-      </Text>
+      {/* Product Header with Image Indicator */}
+      <Box flexDirection="row" justifyContent="space-between">
+        <Box width="80%">
+          <Text bold color="green" inverse>
+            {" " + listing.title.substring(0, 55) + (listing.title.length > 55 ? "..." : "") + " "}
+          </Text>
+        </Box>
+        <Box width="20%">
+          <Text color="cyan">
+            {hasImages ? "📷 IMG" : "NO IMG"}
+          </Text>
+        </Box>
+      </Box>
+
       <Text color="yellow" bold>
         {listing.priceText}
       </Text>
       <Text color="dim">ID: {listing.id}</Text>
 
-      {/* Image Preview Section */}
-      {hasImages && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text bold color="cyan">
-            📷 Images ({listing.images.length}):
+      {/* Image Preview Section - ALWAYS SHOW */}
+      <Box marginTop={1} flexDirection="column">
+        <Text bold color="cyan">Image:</Text>
+        <Box
+          borderStyle="double"
+          borderColor="cyan"
+          paddingX={2}
+          paddingY={1}
+          marginTop={0}
+        >
+          {hasImages ? (
+            <Box flexDirection="column">
+              <Text color="cyan">
+                {createImageFrame(true)}
+              </Text>
+              <Box marginTop={0}>
+                <Text color="yellow">
+                  [{selectedImageIndex + 1} / {listing.images.length}]
+                </Text>
+              </Box>
+            </Box>
+          ) : (
+            <Box flexDirection="column">
+              <Text color="gray">
+                {createImageFrame(false) || "[ NO IMAGE AVAILABLE ]"}
+              </Text>
+            </Box>
+          )}
+        </Box>
+      </Box>
+
+      {/* Clickable URL Section - ALWAYS SHOW */}
+      <Box marginTop={1} flexDirection="column">
+        <Text bold color="blue">URL:</Text>
+        <Box
+          borderStyle="single"
+          borderColor="blue"
+          paddingX={1}
+          marginTop={0}
+        >
+          <Text color="blue">
+            {clickableUrl(imageUrl, "  " + imageUrl)}
           </Text>
+        </Box>
+        <Text color="dim" italic>
+          (Ctrl+Click or copy URL to open in browser)
+        </Text>
+      </Box>
 
-          {/* ASCII Image Frame */}
-          <Box
-            borderStyle="double"
-            borderColor="cyan"
-            paddingX={2}
-            paddingY={1}
-            marginTop={0}
-          >
-            <Text color="cyan">
-              {createImagePlaceholder(40, 8)}
-            </Text>
-          </Box>
-
-          {/* Image Navigation */}
-          <Box flexDirection="row" marginTop={0} justifyContent="space-between">
-            <Text color="dim">
-              {selectedImageIndex === 0 ? "  " : "← "}
-            </Text>
-            <Text color="yellow">
-              {selectedImageIndex + 1} / {listing.images.length}
-            </Text>
-            <Text color="dim">
-              {selectedImageIndex === listing.images.length - 1 ? "  " : " →"}
-            </Text>
-          </Box>
-
-          {/* Clickable URL */}
-          <Box marginTop={0} flexDirection="column">
-            <Text color="dim" italic>
-              Click or copy URL:
-            </Text>
-            <Text color="blue">
-              {clickableUrl(
-                currentImage || listing.url,
-                currentImage?.substring(0, 60) + "..."
-              )}
-            </Text>
-          </Box>
-
-          {/* URL hint */}
-          <Text color="dim" italic>
-            (Ctrl+Click to open in browser)
+      {/* Image Navigation */}
+      {hasImages && (
+        <Box marginTop={0} flexDirection="row" justifyContent="center">
+          <Text color="dim">
+            {selectedImageIndex === 0 ? "  " : "← "}
+          </Text>
+          <Text color="yellow">
+            Browse {selectedImageIndex + 1} of {listing.images.length}
+          </Text>
+          <Text color="dim">
+            {selectedImageIndex === listing.images.length - 1 ? "  " : " →"}
           </Text>
         </Box>
       )}
@@ -118,37 +145,36 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
       <Box marginTop={1} flexDirection="column">
         <Text bold>Description:</Text>
         <Text>
-          {listing.fullDescription || listing.description}
+          {listing.fullDescription || listing.description || "No description available"}
         </Text>
       </Box>
 
       {/* Product Details */}
       <Box marginTop={1} flexDirection="column">
         <Text bold>Details:</Text>
-        <Text color="cyan">📍 {listing.location}</Text>
-        <Text color="cyan">👤 {listing.sellerName}</Text>
+        <Text color="cyan">  📍 {listing.location}</Text>
+        <Text color="cyan">  👤 {listing.sellerName}</Text>
         {listing.paylivery && (
-          <Text color="magenta">✓ PayLivery Available</Text>
+          <Text color="magenta">  ✓ PayLivery Available</Text>
         )}
       </Box>
 
       {/* Attributes */}
-      {listing.attributes &&
-        Object.keys(listing.attributes).length > 0 && (
-          <Box marginTop={1} flexDirection="column">
-            <Text bold>Attributes:</Text>
-            {Object.entries(listing.attributes)
-              .slice(0, 10)
-              .map(([key, val]) => (
-                <Text key={key} color="dim">
-                  • {key}: {Array.isArray(val) ? val.join(", ") : val}
-                </Text>
-              ))}
-          </Box>
-        )}
+      {attributes.length > 0 && (
+        <Box marginTop={1} flexDirection="column">
+          <Text bold>Attributes:</Text>
+          {attributes.slice(0, 8).map(([key, val]) => (
+            <Text key={key} color="dim">
+              {"  • "}
+              {key}:{" "}
+              {Array.isArray(val) ? val.join(", ") : val}
+            </Text>
+          ))}
+        </Box>
+      )}
 
       {/* Quick Actions */}
-      <Box marginTop={1} flexDirection="row">
+      <Box marginTop={1}>
         <Text color="dim">Actions: </Text>
         <Text color="blue">URL</Text>
         <Text color="dim"> | </Text>
