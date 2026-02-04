@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Box, Text, useInput } from "ink";
 import { ListingDetail } from "../types.js";
 import { writeFile, unlink } from "node:fs/promises";
@@ -19,18 +19,25 @@ async function imageToAscii(imageUrl: string, maxWidth: number = 60): Promise<st
     const response = await fetch(imageUrl);
     if (!response.ok) return null;
     const buffer = await response.arrayBuffer();
+
+    // Write to temp file for processing
     const tempPath = join("/tmp", "img-" + Date.now() + ".jpg");
     await writeFile(tempPath, Buffer.from(buffer));
 
     try {
       const sharp = (await import("sharp")).default;
+
+      // Get image dimensions
       const metadata = await sharp(tempPath).metadata();
       const origWidth = metadata.width || maxWidth;
       const origHeight = metadata.height || maxWidth;
+
+      // Calculate height maintaining aspect ratio
       const aspectRatio = origHeight / origWidth;
       const targetWidth = maxWidth;
       const targetHeight = Math.floor(targetWidth * aspectRatio * 0.5);
 
+      // Resize image and convert to raw RGB
       const resizedBuffer = await sharp(tempPath)
         .resize(targetWidth, targetHeight, { fit: "fill" })
         .raw()
@@ -38,6 +45,7 @@ async function imageToAscii(imageUrl: string, maxWidth: number = 60): Promise<st
 
       await unlink(tempPath).catch(() => {});
 
+      // Convert to grayscale ASCII
       let ascii = "";
       for (let y = 0; y < targetHeight; y++) {
         let line = "";
@@ -57,11 +65,13 @@ async function imageToAscii(imageUrl: string, maxWidth: number = 60): Promise<st
         ascii += line + "\n";
       }
       return ascii;
-    } catch {
+    } catch (sharpError) {
+      console.error("Sharp error:", sharpError);
       await unlink(tempPath).catch(() => {});
       return null;
     }
-  } catch {
+  } catch (error) {
+    console.error("Fetch error:", error);
     return null;
   }
 }
@@ -75,7 +85,7 @@ interface DetailViewProps {
 export function DetailView({ listing, loading, onBack }: DetailViewProps) {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [asciiArt, setAsciiArt] = useState<string | null>(null);
-  const [converting, setConverting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (loading) {
     return (
@@ -94,30 +104,40 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
   const imageUrl = currentImage || listing.url;
   const totalImages = listing.images?.length || (listing.imageUrl ? 1 : 0);
 
-  // Convert image to ASCII when viewing
-  useEffect(() => {
-    if (hasImages && !asciiArt && !converting) {
-      setConverting(true);
-      imageToAscii(imageUrl, 60).then((art) => {
-        setAsciiArt(art);
-        setConverting(false);
-      });
+  // Convert image to ASCII
+  const convertImage = useCallback(async () => {
+    if (!hasImages || !imageUrl || asciiArt) return;
+
+    setError(null);
+    const art = await imageToAscii(imageUrl, 60);
+    if (art) {
+      setAsciiArt(art);
+    } else {
+      setError("Failed to convert image");
     }
-  }, [hasImages, imageUrl]);
+  }, [hasImages, imageUrl, asciiArt]);
+
+  // Convert on mount
+  useEffect(() => {
+    convertImage();
+  }, [convertImage]);
 
   // Handle keyboard for image navigation
   useInput((input, key) => {
-    if (!hasImages) return;
+    if (key.escape) {
+      onBack();
+      return;
+    }
+
+    if (!hasImages || totalImages <= 1) return;
 
     if (key.leftArrow && selectedImageIndex > 0) {
       setSelectedImageIndex(selectedImageIndex - 1);
-      setAsciiArt(null); // Reset for new image
-      setConverting(false);
+      setAsciiArt(null);
     }
-    if (key.rightArrow && selectedImageIndex < (listing.images?.length || 1) - 1) {
+    if (key.rightArrow && selectedImageIndex < totalImages - 1) {
       setSelectedImageIndex(selectedImageIndex + 1);
-      setAsciiArt(null); // Reset for new image
-      setConverting(false);
+      setAsciiArt(null);
     }
   });
 
@@ -163,11 +183,11 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
           paddingY={0}
           marginTop={0}
         >
-          {converting ? (
-            <Text color="yellow">Converting to ASCII...</Text>
+          {error ? (
+            <Text color="red">{error}</Text>
           ) : asciiArt ? (
             <Box flexDirection="column">
-              {asciiArt.split("\n").slice(0, 15).map((line, i) => (
+              {asciiArt.split("\n").map((line, i) => (
                 <Text key={i} color="green">
                   {line}
                 </Text>
@@ -175,12 +195,9 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
             </Box>
           ) : (
             <Box flexDirection="column">
+              <Text color="yellow">Converting...</Text>
               <Text color="gray">
- ┌────────────────────────────┐
- │                            │
- │   [ NO IMAGE AVAILABLE ]  │
- │                            │
- └────────────────────────────┘
+                (Press → to navigate if no image appears)
               </Text>
             </Box>
           )}

@@ -23,7 +23,7 @@ import {
   ListingDetail,
   FocusedSection,
 } from "./types.js";
-import { SearchBar } from "./components/index.js";
+import { SearchBar, DetailView } from "./components/index.js";
 
 export default function App() {
   const { exit } = useApp();
@@ -565,61 +565,15 @@ export default function App() {
   };
 
   const renderDetail = () => {
-    if (loadingDetail) {
-      return (
-        <Box marginTop={1}>
-          <Text color="yellow">Loading details...</Text>
-        </Box>
-      );
-    }
-
-    if (!selectedListing) {
-      return null;
-    }
-
     return (
-      <Box
-        flexDirection="column"
-        marginTop={1}
-        borderStyle="round"
-        borderColor="white"
-        padding={1}>
-        <Text bold color="green">
-          {selectedListing.title}
-        </Text>
-        <Text color="yellow">{selectedListing.priceText}</Text>
-        <Text color="dim">ID: {selectedListing.id}</Text>
-
-        <Box marginTop={1}>
-          <Text>
-            {selectedListing.fullDescription || selectedListing.description}
-          </Text>
-        </Box>
-
-        <Box marginTop={1} flexDirection="column">
-          <Text color="cyan">Location: {selectedListing.location}</Text>
-          <Text color="cyan">Seller: {selectedListing.sellerName}</Text>
-          {selectedListing.paylivery && (
-            <Text color="magenta">✓ PayLivery Available</Text>
-          )}
-        </Box>
-
-        {selectedListing.attributes &&
-          Object.keys(selectedListing.attributes).length > 0 && (
-            <Box marginTop={1} flexDirection="column">
-              <Text bold>Attributes:</Text>
-              {Object.entries(selectedListing.attributes).map(([key, val]) => (
-                <Text key={key} color="dim">
-                  - {key}: {Array.isArray(val) ? val.join(", ") : val}
-                </Text>
-              ))}
-            </Box>
-          )}
-
-        <Box marginTop={1}>
-          <Text color="dim">Press Left Arrow to go back</Text>
-        </Box>
-      </Box>
+      <DetailView
+        listing={selectedListing}
+        loading={loadingDetail}
+        onBack={() => {
+          setFocusedSection(previousSection);
+          setSelectedListing(null);
+        }}
+      />
     );
   };
 
