@@ -10,60 +10,66 @@ function clickableUrl(url: string, label?: string): string {
 }
 
 // Simple grayscale ASCII conversion
-async function imageToAscii(imageUrl: string, maxWidth: number = 50): Promise<string | null> {
+async function imageToAscii(imageUrl: string, maxWidth: number = 62): Promise<string | null> {
   try {
     const response = await fetch(imageUrl);
     if (!response.ok) return null;
     const buffer = await response.arrayBuffer();
 
     // Write to temp file for processing
-    const { writeFile, unlink, readFile } = await import("node:fs/promises");
+    const { writeFile, unlink } = await import("node:fs/promises");
     const { join } = await import("node:path");
     const tempPath = join("/tmp", "img-" + Date.now() + ".jpg");
     await writeFile(tempPath, Buffer.from(buffer));
 
-    // Use sharp if available, otherwise simple fallback
-    let sharp: any;
     try {
-      sharp = (await import("sharp")).default;
+      const sharp = (await import("sharp")).default;
+
+      // Get image dimensions
+      const metadata = await sharp(tempPath).metadata();
+      const origWidth = metadata.width || maxWidth;
+      const origHeight = metadata.height || maxWidth;
+
+      // Calculate height maintaining aspect ratio (characters are ~2x tall)
+      const aspectRatio = origHeight / origWidth;
+      const targetWidth = maxWidth;
+      const targetHeight = Math.floor(targetWidth * aspectRatio * 0.5);
+
+      // Resize image and convert to raw RGB
+      const resizedBuffer = await sharp(tempPath)
+        .resize(targetWidth, targetHeight, { fit: "fill" })
+        .raw()
+        .toBuffer();
+
+      await unlink(tempPath).catch(() => {});
+
+      // Convert to grayscale ASCII
+      let ascii = "";
+      const chars = " .·░▒▓█"; // Light to dark for visibility on dark bg
+
+      for (let y = 0; y < targetHeight; y++) {
+        let line = "";
+        for (let x = 0; x < targetWidth; x++) {
+          const idx = (y * targetWidth + x) * 3;
+          if (idx >= resizedBuffer.length) {
+            line += " ";
+            continue;
+          }
+          const r = resizedBuffer[idx];
+          const g = resizedBuffer[idx + 1];
+          const b = resizedBuffer[idx + 2];
+          const gray = Math.floor((r + g + b) / 3);
+          const charIndex = Math.floor((gray / 255) * (chars.length - 1));
+          line += chars[charIndex];
+        }
+        ascii += line + "\n";
+      }
+
+      return ascii;
     } catch {
-      // Sharp not available, use simple approach
       await unlink(tempPath).catch(() => {});
       return simpleAsciiFromUrl(imageUrl, maxWidth);
     }
-
-    // Resize image and convert to raw RGB
-    const resizedBuffer = await sharp(tempPath)
-      .resize(maxWidth, Math.floor(maxWidth * 0.5))
-      .raw()
-      .toBuffer();
-
-    await unlink(tempPath).catch(() => {});
-
-    // Convert to grayscale ASCII
-    let ascii = "";
-    const chars = " .:-=+*#%@"; // Light to dark
-    const width = maxWidth;
-
-    for (let y = 0; y < Math.floor(maxWidth * 0.5); y++) {
-      let line = "";
-      for (let x = 0; x < width; x++) {
-        const idx = (y * width + x) * 3;
-        if (idx >= resizedBuffer.length) {
-          line += " ";
-          continue;
-        }
-        const r = resizedBuffer[idx];
-        const g = resizedBuffer[idx + 1];
-        const b = resizedBuffer[idx + 2];
-        const gray = Math.floor((r + g + b) / 3);
-        const charIndex = Math.floor((gray / 255) * (chars.length - 1));
-        line += chars[charIndex];
-      }
-      ascii += line + "\n";
-    }
-
-    return ascii;
   } catch (error) {
     console.error("ASCII conversion failed:", error instanceof Error ? error.message : error);
     return null;
@@ -117,18 +123,11 @@ function renderProductDetail(listing: ListingDetail, asciiArt: string | null = n
   if (asciiArt) {
     // Show actual ASCII art with bright green color
     const lines = asciiArt.split("\n");
-    lines.slice(0, 12).forEach((line) => {
+    lines.forEach((line) => {
       if (line.trim()) {
-        // Use bright characters for dark backgrounds
-        const brightLine = line
-          .replace(/:/g, "·")
-          .replace(/,/g, "░")
-          .replace(/;/g, "▒")
-          .replace(/[tf]/g, "▓")
-          .replace(/[1i]/g, "█")
-          .replace(/[lLCf]/g, "█")
-          .replace(/[ ]/g, " ");
-        console.log("\x1b[32;1m│   " + brightLine.substring(0, 62) + "\x1b[0m");
+        console.log("\x1b[32;1m│ " + line.substring(0, 66) + "\x1b[0m");
+      } else {
+        console.log("\x1b[36m│\x1b[0m");
       }
     });
   } else {
