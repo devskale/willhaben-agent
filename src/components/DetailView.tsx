@@ -20,24 +20,18 @@ async function imageToAscii(imageUrl: string, maxWidth: number = 60): Promise<st
     if (!response.ok) return null;
     const buffer = await response.arrayBuffer();
 
-    // Write to temp file for processing
     const tempPath = join("/tmp", "img-" + Date.now() + ".jpg");
     await writeFile(tempPath, Buffer.from(buffer));
 
     try {
       const sharp = (await import("sharp")).default;
-
-      // Get image dimensions
       const metadata = await sharp(tempPath).metadata();
       const origWidth = metadata.width || maxWidth;
       const origHeight = metadata.height || maxWidth;
-
-      // Calculate height maintaining aspect ratio
       const aspectRatio = origHeight / origWidth;
       const targetWidth = maxWidth;
       const targetHeight = Math.floor(targetWidth * aspectRatio * 0.5);
 
-      // Resize image and convert to raw RGB
       const resizedBuffer = await sharp(tempPath)
         .resize(targetWidth, targetHeight, { fit: "fill" })
         .raw()
@@ -45,7 +39,6 @@ async function imageToAscii(imageUrl: string, maxWidth: number = 60): Promise<st
 
       await unlink(tempPath).catch(() => {});
 
-      // Convert to grayscale ASCII
       let ascii = "";
       for (let y = 0; y < targetHeight; y++) {
         let line = "";
@@ -81,52 +74,68 @@ interface DetailViewProps {
 }
 
 export function DetailView({ listing, loading, onBack }: DetailViewProps) {
+  // All hooks at the top level - no conditional returns
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [asciiArt, setAsciiArt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Use ref to track conversion state
+  // Refs for async state management
   const convertingRef = useRef(false);
   const asciiArtRef = useRef<string | null>(null);
   const currentUrlRef = useRef<string | null>(null);
+  const listingIdRef = useRef<string | null>(null);
 
-  if (loading) {
-    return (
-      <Box marginTop={1}>
-        <Text color="yellow">Loading details...</Text>
-      </Box>
-    );
-  }
+  // Handle keyboard
+  useInput((input, key) => {
+    if (key.escape) {
+      onBack();
+      return;
+    }
 
-  if (!listing) return null;
+    const hasImages = (listing?.images && listing.images.length > 0) || !!listing?.imageUrl;
+    const totalImages = listing?.images?.length || (listing?.imageUrl ? 1 : 0);
 
-  const hasImages = (listing.images && listing.images.length > 0) || !!listing.imageUrl;
-  const currentImage = hasImages
-    ? (listing.images?.[selectedImageIndex] || listing.imageUrl)
-    : null;
-  const imageUrl = currentImage || listing.url;
-  const totalImages = listing.images?.length || (listing.imageUrl ? 1 : 0);
+    if (!hasImages || totalImages <= 1) return;
 
-  // Convert image to ASCII - useEffect with proper dependencies
+    if (key.leftArrow && selectedImageIndex > 0) {
+      setSelectedImageIndex(selectedImageIndex - 1);
+      asciiArtRef.current = null;
+      setAsciiArt(null);
+    }
+    if (key.rightArrow && selectedImageIndex < totalImages - 1) {
+      setSelectedImageIndex(selectedImageIndex + 1);
+      asciiArtRef.current = null;
+      setAsciiArt(null);
+    }
+  });
+
+  // Convert image to ASCII
   useEffect(() => {
-    // Skip if no image or already converted
-    if (!hasImages || !imageUrl) return;
+    // If loading or no listing, skip
+    if (loading || !listing) return;
 
-    // Skip if we already have the ASCII art for this URL
-    if (asciiArtRef.current && currentUrlRef.current === imageUrl) {
+    const hasImages = (listing.images && listing.images.length > 0) || !!listing.imageUrl;
+    if (!hasImages) return;
+
+    const currentImage = listing.images?.[selectedImageIndex] || listing.imageUrl;
+    if (!currentImage) return;
+
+    // If we already have the ASCII art for this listing+image, skip
+    const cacheKey = `${listing.id}-${selectedImageIndex}-${currentImage}`;
+    if (asciiArtRef.current && listingIdRef.current === cacheKey) {
       setAsciiArt(asciiArtRef.current);
       return;
     }
 
-    // Skip if already converting
+    // If already converting, skip
     if (convertingRef.current) return;
 
     // Start conversion
     convertingRef.current = true;
-    currentUrlRef.current = imageUrl;
+    listingIdRef.current = cacheKey;
     setError(null);
 
-    imageToAscii(imageUrl, 60)
+    imageToAscii(currentImage, 60)
       .then((art) => {
         if (art) {
           asciiArtRef.current = art;
@@ -136,40 +145,33 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
         }
       })
       .catch((err) => {
-        setError("Error converting image: " + err.message);
+        setError("Error converting image");
       })
       .finally(() => {
         convertingRef.current = false;
       });
-  }, [hasImages, imageUrl]);
+  }, [loading, listing, selectedImageIndex]);
 
-  // Handle keyboard for image navigation
-  useInput((input, key) => {
-    if (key.escape) {
-      onBack();
-      return;
-    }
+  // Handle loading state
+  if (loading) {
+    return (
+      <Box marginTop={1}>
+        <Text color="yellow">Loading details...</Text>
+      </Box>
+    );
+  }
 
-    if (!hasImages || totalImages <= 1) return;
+  // Handle no listing
+  if (!listing) {
+    return null;
+  }
 
-    if (key.leftArrow && selectedImageIndex > 0) {
-      setSelectedImageIndex(selectedImageIndex - 1);
-      // Clear cached ASCII to force re-conversion
-      asciiArtRef.current = null;
-      setAsciiArt(null);
-    }
-    if (key.rightArrow && selectedImageIndex < totalImages - 1) {
-      setSelectedImageIndex(selectedImageIndex + 1);
-      // Clear cached ASCII to force re-conversion
-      asciiArtRef.current = null;
-      setAsciiArt(null);
-    }
-  });
-
-  // Parse attributes into an array
-  const attributes = listing.attributes
-    ? Object.entries(listing.attributes)
-    : [];
+  // Derived values
+  const hasImages = (listing.images && listing.images.length > 0) || !!listing.imageUrl;
+  const currentImage = listing.images?.[selectedImageIndex] || listing.imageUrl;
+  const imageUrl = currentImage || listing.url;
+  const totalImages = listing.images?.length || (listing.imageUrl ? 1 : 0);
+  const attributes = listing.attributes ? Object.entries(listing.attributes) : [];
 
   return (
     <Box
@@ -179,7 +181,7 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
       borderColor="white"
       padding={1}
     >
-      {/* Product Header with Image Indicator */}
+      {/* Product Header */}
       <Box flexDirection="row" justifyContent="space-between">
         <Box width="75%">
           <Text bold color="green" inverse>
@@ -198,7 +200,7 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
       </Text>
       <Text color="dim">ID: {listing.id}</Text>
 
-      {/* Image Preview Section */}
+      {/* Image Preview */}
       <Box marginTop={1} flexDirection="column">
         <Text bold color="cyan">Image Preview:</Text>
         <Box
@@ -220,16 +222,15 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
             </Box>
           ) : (
             <Box flexDirection="column">
-              <Text color="yellow">Converting...</Text>
-              <Text color="gray">
-                (Press → to navigate if no image appears)
+              <Text color="yellow">
+                {hasImages ? "Converting..." : "No image available"}
               </Text>
             </Box>
           )}
         </Box>
       </Box>
 
-      {/* Clickable URL Section */}
+      {/* Clickable URL */}
       <Box marginTop={1} flexDirection="column">
         <Text bold color="blue">URL:</Text>
         <Box
