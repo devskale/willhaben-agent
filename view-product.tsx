@@ -30,8 +30,8 @@ function createImageFrame(hasImage: boolean): string {
 
 // Render product detail view to console
 function renderProductDetail(listing: ListingDetail): void {
-  const hasImages = listing.images && listing.images.length > 0;
-  const imageUrl = listing.images?.[0] || listing.url;
+  const hasImages = (listing.images && listing.images.length > 0) || !!listing.imageUrl;
+  const imageUrl = listing.images?.[0] || listing.imageUrl || listing.url;
 
   console.clear();
   console.log("");

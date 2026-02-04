@@ -29,8 +29,10 @@ export function DetailView({ listing, loading, onBack }: DetailViewProps) {
 
   if (!listing) return null;
 
-  const hasImages = listing.images && listing.images.length > 0;
-  const currentImage = hasImages ? listing.images[selectedImageIndex] : null;
+  const hasImages = (listing.images && listing.images.length > 0) || !!listing.imageUrl;
+  const currentImage = hasImages
+    ? (listing.images?.[selectedImageIndex] || listing.imageUrl)
+    : null;
   const imageUrl = currentImage || listing.url;
 
   // Handle keyboard for image navigation
