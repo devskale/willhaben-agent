@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/cli.tsx",
-    "view": "tsx view-product.tsx",
+    "view": "npx tsx view-product.ts",
+    "view-ascii": "npx tsx view-product.ts",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "type-check": "tsc --noEmit",
@@ -16,6 +17,7 @@
     "@steipete/sweet-cookie": "^0.1.0",
     "better-sqlite3": "^12.6.2",
     "cheerio": "^1.1.2",
+    "image-to-ascii": "^3.3.0",
     "ink": "^6.6.0",
     "ink-select-input": "^6.2.0",
     "ink-text-input": "^6.0.0",
