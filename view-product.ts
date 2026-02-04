@@ -10,7 +10,7 @@ function clickableUrl(url: string, label?: string): string {
 }
 
 // Simple grayscale ASCII conversion
-async function imageToAscii(imageUrl: string, maxWidth: number = 62): Promise<string | null> {
+async function imageToAscii(imageUrl: string, maxWidth: number = 68): Promise<string | null> {
   try {
     const response = await fetch(imageUrl);
     if (!response.ok) return null;
@@ -104,17 +104,17 @@ function renderProductDetail(listing: ListingDetail, asciiArt: string | null = n
   const imageUrl = listing.images?.[0] || listing.imageUrl || listing.url;
 
   console.log("");
-  console.log("\x1b[36m┌" + "─".repeat(70) + "┐\x1b[0m"); // Cyan border
+  console.log("\x1b[36m┌" + "─".repeat(72) + "┐\x1b[0m"); // Cyan border
 
   // Header
-  const title = listing.title?.substring(0, 55) || "Unknown Product";
-  console.log("\x1b[36m│\x1b[0m " + (hasImages ? "\x1b[32;1m📷 IMG  \x1b[0m" : "\x1b[31mNO IMG  \x1b[0m") + title.padEnd(60 - title.length) + "\x1b[36m│\x1b[0m");
-  console.log("\x1b[36m├" + "─".repeat(70) + "┤\x1b[0m");
+  const title = listing.title?.substring(0, 58) || "Unknown Product";
+  console.log("\x1b[36m│\x1b[0m " + (hasImages ? "\x1b[32;1m📷 IMG  \x1b[0m" : "\x1b[31mNO IMG  \x1b[0m") + title.padEnd(66 - title.length) + "\x1b[36m│\x1b[0m");
+  console.log("\x1b[36m├" + "─".repeat(72) + "┤\x1b[0m");
 
   // Price and ID
   console.log("\x1b[36m│\x1b[0m \x1b[33;1m💰\x1b[0m " + (listing.priceText || listing.priceForDisplay || "N/A"));
   console.log("\x1b[36m│\x1b[0m \x1b[33;1m🏷️ \x1b[0m ID: " + listing.id);
-  console.log("\x1b[36m├" + "─".repeat(70) + "┤\x1b[0m");
+  console.log("\x1b[36m├" + "─".repeat(72) + "┤\x1b[0m");
 
   // ASCII Art Image Preview
   console.log("\x1b[36m│\x1b[0m \x1b[32;1m📷 Image Preview:\x1b[0m");
@@ -125,7 +125,7 @@ function renderProductDetail(listing: ListingDetail, asciiArt: string | null = n
     const lines = asciiArt.split("\n");
     lines.forEach((line) => {
       if (line.trim()) {
-        console.log("\x1b[32;1m│ " + line.substring(0, 66) + "\x1b[0m");
+        console.log("\x1b[32;1m│ " + line.substring(0, 68) + "\x1b[0m");
       } else {
         console.log("\x1b[36m│\x1b[0m");
       }
@@ -139,20 +139,20 @@ function renderProductDetail(listing: ListingDetail, asciiArt: string | null = n
     console.log("\x1b[36m│\x1b[0m      \x1b[32;1m└──────────────────────────────┘\x1b[0m");
   }
   console.log("\x1b[36m│\x1b[0m");
-  console.log("\x1b[36m├" + "─".repeat(70) + "┤\x1b[0m");
+  console.log("\x1b[36m├" + "─".repeat(72) + "┤\x1b[0m");
 
   // Clickable URL
   console.log("\x1b[36m│\x1b[0m \x1b[34;1m🔗 Image URL:\x1b[0m");
-  console.log("\x1b[36m│\x1b[0m   " + clickableUrl(imageUrl, imageUrl.substring(0, 60)));
+  console.log("\x1b[36m│\x1b[0m   " + clickableUrl(imageUrl, imageUrl.substring(0, 65)));
   console.log("\x1b[36m│\x1b[0m   \x1b[90m(Ctrl+Click or copy URL to view image)\x1b[0m");
-  console.log("\x1b[36m├" + "─".repeat(70) + "┤\x1b[0m");
+  console.log("\x1b[36m├" + "─".repeat(72) + "┤\x1b[0m");
 
   // Description
   const desc = listing.fullDescription || listing.description || "No description";
   const cleanDesc = desc.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
   console.log("\x1b[36m│\x1b[0m \x1b[33;1m📝 Description:\x1b[0m");
-  console.log("\x1b[36m│\x1b[0m   " + cleanDesc.substring(0, 200));
-  console.log("\x1b[36m├" + "─".repeat(70) + "┤\x1b[0m");
+  console.log("\x1b[36m│\x1b[0m   " + cleanDesc.substring(0, 220));
+  console.log("\x1b[36m├" + "─".repeat(72) + "┤\x1b[0m");
 
   // Details
   console.log("\x1b[36m│\x1b[0m \x1b[33;1m📍 Location:\x1b[0m " + (listing.location || "N/A"));
@@ -160,16 +160,16 @@ function renderProductDetail(listing: ListingDetail, asciiArt: string | null = n
   if (listing.paylivery) {
     console.log("\x1b[36m│\x1b[0m \x1b[32;1m✅ PayLivery Available\x1b[0m");
   }
-  console.log("\x1b[36m├" + "─".repeat(70) + "┤\x1b[0m");
+  console.log("\x1b[36m├" + "─".repeat(72) + "┤\x1b[0m");
 
   // Footer
   console.log("\x1b[36m│\x1b[0m \x1b[33;1m🎯 Actions:\x1b[0m");
   console.log("\x1b[36m│\x1b[0m   [URL] Copy URL above to open in browser");
-  console.log("\x1b[36m└" + "─".repeat(70) + "┘\x1b[0m");
+  console.log("\x1b[36m└" + "─".repeat(72) + "┘\x1b[0m");
   console.log("");
-  console.log("\x1b[90m═══════════════════════════════════════════════════════════════════════\x1b[0m");
+  console.log("\x1b[90m═════════════════════════════════════════════════════════════════════════════════\x1b[0m");
   console.log("\x1b[90mPress Ctrl+C to exit, or copy URL above to view image\x1b[0m");
-  console.log("\x1b[90m═══════════════════════════════════════════════════════════════════════\x1b[0m");
+  console.log("\x1b[90m═════════════════════════════════════════════════════════════════════════════════\x1b[0m");
   console.log("");
 }
 
@@ -199,7 +199,7 @@ async function main() {
 
     if (imageUrl) {
       console.log("Converting image to ASCII...");
-      asciiArt = await imageToAscii(imageUrl, 50);
+      asciiArt = await imageToAscii(imageUrl, 68);
     }
 
     console.clear();
