@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRenderer, useKeyboard } from "@opentui/react";
 import { checkAuth, AuthState } from "./agents/auth.js";
 import { searchItems } from "./agents/search.js";
@@ -27,23 +27,9 @@ export function App() {
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
   const [selectedCategoryName, setSelectedCategoryName] = useState<string | null>(null);
 
-   // Search History
-   const [searchHistory, setSearchHistory] = useState<any[]>([]);
-
-   const historyMatches = useMemo(() => {
-     if (!query.trim()) return [];
-     const matches = searchHistory.filter((h) => 
-       h.query.toLowerCase().includes(query.toLowerCase())
-     );
-     const unique = Array.from(new Set(matches.map(m => m.query)));
-     return unique.slice(0, 5);
-   }, [query, searchHistory]);
-
+  // Search History
   const refreshHistory = useCallback(() => {
-    try {
-      const history = getSearchHistory();
-      setSearchHistory(history);
-    } catch {}
+    // History is loaded when needed, no need to store in state
   }, []);
 
   // Starred Items
@@ -490,15 +476,6 @@ export function App() {
           onSubmit={(value) => handleSearchSubmit(value)}
           focused={focusedSection === "search"}
         />
-        {focusedSection === "search" && historyMatches.length > 0 && (
-          <box flexDirection="column" border borderStyle="single" borderColor="gray">
-            {historyMatches.map((item, index) => (
-              <text key={item.id} fg="white">
-                {item.query}
-              </text>
-            ))}
-          </box>
-        )}
         <box marginTop={0}>
           <text fg="dim">
             {query.trim()
