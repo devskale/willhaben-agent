@@ -2,17 +2,17 @@
 // Settings are stored in ~/.config/willhaben/config.json
 
 export interface UserConfig {
-  asciiWidth: 80 | 100 | 120;      // Width for ASCII image rendering
-  asciiContrast: "low" | "medium" | "high";  // ASCII character gradient
+  asciiWidth: 80 | 100 | 120 | "auto";           // Width for ASCII image rendering
+  asciiContrast: "low" | "medium" | "high" | "rotate";  // ASCII character gradient
 }
 
 export const DEFAULT_CONFIG: UserConfig = {
-  asciiWidth: 100,
-  asciiContrast: "medium",
+  asciiWidth: "auto",
+  asciiContrast: "rotate",
 };
 
-export const VALID_ASCII_WIDTHS = [80, 100, 120] as const;
-export const VALID_ASCII_CONTRASTS = ["low", "medium", "high"] as const;
+export const VALID_ASCII_WIDTHS = [80, 100, 120, "auto"] as const;
+export const VALID_ASCII_CONTRASTS = ["low", "medium", "high", "rotate"] as const;
 
 // ASCII character sets for different contrast levels
 export const ASCII_CHAR_SETS = {
@@ -42,18 +42,25 @@ export async function getConfig(): Promise<UserConfig> {
   try {
     const content = await readFile(CONFIG_FILE, "utf-8");
     const config = JSON.parse(content) as Partial<UserConfig>;
-    
-    // Validate and merge with defaults
+
+    // Validate width (handle both number and "auto" string)
     const width = config.asciiWidth;
+    let validWidth: 80 | 100 | 120 | "auto";
+    if (width === "auto" || (typeof width === "number" && VALID_ASCII_WIDTHS.includes(width as any))) {
+      validWidth = width as 80 | 100 | 120 | "auto";
+    } else {
+      validWidth = DEFAULT_CONFIG.asciiWidth;
+    }
+
+    // Validate contrast
     const contrast = config.asciiContrast;
-    
+    const validContrast = VALID_ASCII_CONTRASTS.includes(contrast as any)
+      ? contrast as "low" | "medium" | "high"
+      : DEFAULT_CONFIG.asciiContrast;
+
     return {
-      asciiWidth: VALID_ASCII_WIDTHS.includes(width as any) 
-        ? width as 80 | 100 | 120
-        : DEFAULT_CONFIG.asciiWidth,
-      asciiContrast: VALID_ASCII_CONTRASTS.includes(contrast as any)
-        ? contrast as "low" | "medium" | "high"
-        : DEFAULT_CONFIG.asciiContrast,
+      asciiWidth: validWidth,
+      asciiContrast: validContrast,
     };
   } catch {
     // Config doesn't exist or is invalid, return defaults
@@ -66,12 +73,12 @@ export async function setConfig(updates: Partial<UserConfig>): Promise<UserConfi
 
   const current = await getConfig();
   const merged = { ...current, ...updates };
-  
+
   await writeFile(CONFIG_FILE, JSON.stringify(merged, null, 2));
-  
+
   return merged;
 }
 
-export function isValidAsciiWidth(value: unknown): value is 80 | 100 | 120 {
+export function isValidAsciiWidth(value: unknown): value is 80 | 100 | 120 | "auto" {
   return VALID_ASCII_WIDTHS.includes(value as any);
 }

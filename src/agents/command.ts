@@ -17,6 +17,7 @@ export interface CommandContext {
   setStarredIndex: (index: number) => void;
   setUserProfile: (profile: UserProfile | null) => void;
   setIsLoading: (loading: boolean) => void;
+  searchInputRef: React.RefObject<{ focus: () => void } | null>;
 }
 
 export type CommandAction = (context: CommandContext) => void | Promise<void>;
@@ -34,6 +35,7 @@ export const COMMANDS: Command[] = [
     action: (ctx) => {
       ctx.setCommandInput("");
       ctx.setFocusedSection("search");
+      ctx.searchInputRef.current?.focus();
     },
   },
   {

@@ -16,6 +16,9 @@ const getHeaders = (cookies: string) => ({
   Cookie: cookies,
   Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
   "Accept-Language": "de-AT,de;q=0.9,en;q=0.8",
+  "Cache-Control": "no-cache, no-store, must-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
 });
 
 const parseAttributes = (item: any): Record<string, any> => {
@@ -112,6 +115,8 @@ export const searchItems = async (
     url += `&ATTRIBUTE_TREE=${categoryId}`;
   }
 
+  console.log(`[SEARCH] keyword="${keyword}", categoryId=${categoryId}, url=${url}`);
+
   try {
     const response = await fetch(url, { headers });
     if (!response.ok) {
@@ -132,11 +137,13 @@ export const searchItems = async (
       data.props?.pageProps?.categorySuggestions || [];
 
     if (!searchResult) {
+      console.log(`[SEARCH] No searchResult found for "${keyword}"`);
       return { items: [], totalFound: 0, categories: [] };
     }
 
     const ads = searchResult.advertSummaryList?.advertSummary || [];
     const totalFound = searchResult.rowsFound || ads.length;
+    console.log(`[SEARCH] Found ${totalFound} items, first item: ${ads[0]?.description?.substring(0, 50) || 'N/A'}`);
     const items = ads.map(parseListing);
 
     // Extract categories

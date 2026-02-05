@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRenderer, useKeyboard } from "@opentui/react";
 import { checkAuth, AuthState } from "./agents/auth.js";
 import { searchItems } from "./agents/search.js";
 import { getCommandNames, executeCommand, CommandContext } from "./agents/command.js";
 import { toggleStar, getStarredItems, getSearchHistory, addSearchHistory } from "./agents/db.js";
 import { SearchResult } from "./types.js";
+import { getConfig, ASCII_CHAR_SETS } from "./agents/config.js";
+import { SearchField } from "./components/SearchField.js";
 
 export function App() {
   const renderer = useRenderer();
@@ -25,10 +27,24 @@ export function App() {
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
   const [selectedCategoryName, setSelectedCategoryName] = useState<string | null>(null);
 
-  // Search History
-  const [searchHistory, setSearchHistory] = useState<any[]>([]);
-  const [historyFocused, setHistoryFocused] = useState(false);
-  const [suggestionIndex, setSuggestionIndex] = useState(0);
+   // Search History
+   const [searchHistory, setSearchHistory] = useState<any[]>([]);
+
+   const historyMatches = useMemo(() => {
+     if (!query.trim()) return [];
+     const matches = searchHistory.filter((h) => 
+       h.query.toLowerCase().includes(query.toLowerCase())
+     );
+     const unique = Array.from(new Set(matches.map(m => m.query)));
+     return unique.slice(0, 5);
+   }, [query, searchHistory]);
+
+  const refreshHistory = useCallback(() => {
+    try {
+      const history = getSearchHistory();
+      setSearchHistory(history);
+    } catch {}
+  }, []);
 
   // Starred Items
   const [starredIds, setStarredIds] = useState<Set<string>>(new Set());
@@ -53,6 +69,96 @@ export function App() {
   // Detail View State
   const [selectedListing, setSelectedListing] = useState<any>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [asciiArt, setAsciiArt] = useState<string | null>(null);
+
+  // Config State
+  const [config, setConfig] = useState<{ asciiWidth: number | "auto"; asciiContrast: string }>({
+    asciiWidth: "auto",
+    asciiContrast: "rotate",
+  });
+
+  // Image rotation state
+  const [currentContrast, setCurrentContrast] = useState<string>("medium");
+  const [rotationInterval, setRotationInterval] = useState<ReturnType<typeof setInterval> | null>(null);
+
+  // Get terminal width for "auto" mode
+  const getTerminalWidth = (): number => {
+    const cols = process.env.COLUMNS ? parseInt(process.env.COLUMNS) : undefined;
+    if (cols && cols > 40) return cols - 10; // Leave margin
+    return 60; // Default fallback
+  };
+
+  // Image to ASCII conversion
+  const imageToAscii = async (imageUrl: string, asciiWidth: number | "auto", asciiChars: string): Promise<string | null> => {
+    try {
+      const response = await fetch(imageUrl);
+      if (!response.ok) return null;
+      const buffer = await response.arrayBuffer();
+      const { writeFile, unlink } = await import("node:fs/promises");
+      const { join } = await import("node:path");
+      const tempPath = join("/tmp", "img-" + Date.now() + ".jpg");
+      await writeFile(tempPath, Buffer.from(buffer));
+
+      try {
+        const sharp = (await import("sharp")).default;
+        const metadata = await sharp(tempPath).metadata();
+        const origWidth = metadata.width || 100;
+        const origHeight = metadata.height || 100;
+
+        // Use auto mode to get terminal width
+        const maxWidth = asciiWidth === "auto" ? getTerminalWidth() : asciiWidth;
+        const aspectRatio = origHeight / origWidth;
+        const targetWidth = Math.min(maxWidth, 100);
+
+        // Full image height maintaining aspect ratio (characters are ~2x tall)
+        // Use full height without artificial limits
+        const charAspect = 0.5; // Terminal chars are taller than wide
+        const targetHeight = Math.floor(targetWidth * aspectRatio * charAspect);
+
+        const resizedBuffer = await sharp(tempPath)
+          .resize(targetWidth, targetHeight, { fit: "fill" })
+          .raw()
+          .toBuffer();
+
+        await unlink(tempPath).catch(() => {});
+
+        let ascii = "";
+        const chars = asciiChars;
+
+        for (let y = 0; y < targetHeight; y++) {
+          let line = "";
+          for (let x = 0; x < targetWidth; x++) {
+            const idx = (y * targetWidth + x) * 3;
+            if (idx >= resizedBuffer.length) {
+              line += " ";
+              continue;
+            }
+            const r = resizedBuffer[idx];
+            const g = resizedBuffer[idx + 1];
+            const b = resizedBuffer[idx + 2];
+            const gray = Math.floor((r + g + b) / 3);
+            const charIndex = Math.floor((gray / 255) * (chars.length - 1));
+            line += chars[charIndex];
+          }
+          ascii += line + "\n";
+        }
+
+        return ascii;
+      } catch {
+        await unlink(tempPath).catch(() => {});
+        return null;
+      }
+    } catch {
+      return null;
+    }
+  };
+
+  // Load config on mount
+  useEffect(() => {
+    getConfig().then(setConfig).catch(() => {
+      setConfig({ asciiWidth: "auto", asciiContrast: "medium" });
+    });
+  }, []);
 
   // Initial Auth Check
   useEffect(() => {
@@ -63,17 +169,16 @@ export function App() {
     };
     initAuth();
 
-    // Load db data
+    // Load db data and show history at startup
     try {
       const starred = getStarredItems();
-      const history = getSearchHistory();
       setStarredIds(new Set(starred.map((s: any) => s.id)));
       setStarredItemsList(starred);
-      setSearchHistory(history);
+      refreshHistory();
     } catch (e) {
       console.error("DB error:", e);
     }
-  }, []);
+  }, [refreshHistory]);
 
   const performSearch = async (q: string, catId?: string, p: number = 1) => {
     if (!q.trim()) return null;
@@ -83,6 +188,7 @@ export function App() {
     if (p === 1) {
       try {
         addSearchHistory(q, catId);
+        refreshHistory();
       } catch {}
     }
 
@@ -106,109 +212,49 @@ export function App() {
     (key) => {
       const input = key.sequence;
 
-      // Allow delete/backspace to pass through to input components for text editing
-      if ((key.name === "backspace" || key.name === "delete") && (focusedSection === "search" || focusedSection === "command")) {
-        return; // Let input component handle text deletion
-      }
-
-      // Let Enter pass through in search mode for direct input
-      if ((key.name === "return" || key.name === "enter") && focusedSection === "search") {
-        if (query && query.trim()) {
-          handleSearchSubmit(query);
-        }
-        return;
-      }
-
-      if (key.name === "escape") {
-        if (focusedSection === "command") {
+      // Command mode
+      if (focusedSection === "command") {
+        if (key.name === "escape") {
           setFocusedSection("search");
           setCommandInput("");
-          return;
         }
-        if (historyFocused) {
-          setHistoryFocused(false);
-          return;
+        if (key.name === "tab") {
+          const match = getCommandNames().find((c) => c.startsWith(commandInput));
+          if (match) setCommandInput(match);
         }
-        setSearchResult(null);
-        setQuery("");
-        setCategoryId(undefined);
-        setSelectedCategoryName(null);
-        setPage(1);
-        setFocusedSection("search");
         return;
       }
 
-      if (input === "/") {
+      // Slash: enter command mode
+      if (input === "/" && focusedSection !== "search") {
         setFocusedSection("command");
         setCommandInput("/");
         return;
       }
 
-      if (focusedSection === "command") {
-        if (key.name === "tab") {
-          const match = getCommandNames().find((c) => c.startsWith(commandInput));
-          if (match) setCommandInput(match);
-        }
-      }
-
+      // Search mode
       if (focusedSection === "search") {
-        // If suggestions exist, navigate with up/down
-        const suggestions = getFilteredSuggestions();
-        if (suggestions.length > 0) {
-          if (key.name === "up") {
-            if (!historyFocused) {
-              setHistoryFocused(true);
-              setSuggestionIndex(0);
-            } else {
-              setSuggestionIndex((prev) => Math.max(0, prev - 1));
-            }
-            return;
-          }
-          if (key.name === "down") {
-            if (!historyFocused) {
-              setHistoryFocused(true);
-              setSuggestionIndex(0);
-            } else {
-              setSuggestionIndex((prev) => Math.min(prev + 1, suggestions.length - 1));
-            }
-            return;
-          }
-          // Enter submits selected suggestion
-          if (key.name === "return" || key.name === "enter") {
-            if (historyFocused && suggestions[suggestionIndex]) {
-              setHistoryFocused(false);
-              handleSearchSubmit(suggestions[suggestionIndex].query);
-            } else if (query && query.trim()) {
-              handleSearchSubmit(query);
-            }
-            return;
-          }
-          // Escape closes suggestions (keeps current query)
-          if (key.name === "escape") {
-            setHistoryFocused(false);
-            return;
-          }
-        }
-
-        // Handle Enter when no suggestions exist
-        if (key.name === "return" || key.name === "enter") {
-          if (query && query.trim()) {
-            handleSearchSubmit(query);
-          }
+        if (key.name === "escape") {
+          setQuery("");
+          setSearchResult(null);
           return;
         }
 
-        // Down to categories/products
+        if (key.ctrl && input === "h") {
+          setFocusedSection("history");
+          setHistoryIndex(0);
+          return;
+        }
+
         if (key.name === "down") {
           if (searchResult?.categories?.length) {
             setFocusedSection("categories");
             setCategoryIndex(0);
-            return;
           } else if (searchResult?.items?.length) {
             setFocusedSection("products");
             setProductIndex(0);
-            return;
           }
+          return;
         }
       } else if (focusedSection === "categories") {
         const categories = [{ id: "all", name: "All Categories", count: 0 }, ...(searchResult?.categories || [])];
@@ -258,10 +304,49 @@ export function App() {
           setPreviousSection("products");
           setFocusedSection("detail");
           setLoadingDetail(true);
+          setAsciiArt(null);
+
+          // Stop any existing rotation
+          if (rotationInterval) {
+            clearInterval(rotationInterval);
+            setRotationInterval(null);
+          }
+
           import("./agents/search.js").then(({ getListingDetails }) => {
             getListingDetails(item.id)
-              .then((detail) => {
+              .then(async (detail) => {
                 setSelectedListing(detail);
+                // Convert image to ASCII
+                const imageUrl = detail.images?.[0] || detail.imageUrl;
+                if (imageUrl) {
+                  // Handle rotate mode
+                  if (config.asciiContrast === "rotate") {
+                    const modes = ["low", "medium", "high"];
+                    let modeIndex = 0;
+                    setCurrentContrast(modes[modeIndex]);
+
+                    // Generate initial ASCII
+                    const chars = ASCII_CHAR_SETS[modes[modeIndex] as keyof typeof ASCII_CHAR_SETS];
+                    const ascii = await imageToAscii(imageUrl, config.asciiWidth, chars);
+                    setAsciiArt(ascii);
+
+                    // Start rotation interval
+                    const interval = setInterval(async () => {
+                      modeIndex = (modeIndex + 1) % modes.length;
+                      setCurrentContrast(modes[modeIndex]);
+                      const newChars = ASCII_CHAR_SETS[modes[modeIndex] as keyof typeof ASCII_CHAR_SETS];
+                      const newAscii = await imageToAscii(imageUrl, config.asciiWidth, newChars);
+                      setAsciiArt(newAscii);
+                    }, 500);
+                    setRotationInterval(interval);
+                  } else {
+                    // Single mode
+                    const chars = ASCII_CHAR_SETS[config.asciiContrast as keyof typeof ASCII_CHAR_SETS] || ASCII_CHAR_SETS.medium;
+                    const ascii = await imageToAscii(imageUrl, config.asciiWidth, chars);
+                    setAsciiArt(ascii);
+                    setCurrentContrast(config.asciiContrast);
+                  }
+                }
               })
               .catch((e) => {
                 setError(e instanceof Error ? e.message : "Failed to load details");
@@ -270,6 +355,7 @@ export function App() {
                 setLoadingDetail(false);
               });
           });
+          return;
         }
         if (input === " " && items[productIndex]) {
           const item = items[productIndex];
@@ -280,16 +366,19 @@ export function App() {
             else next.delete(item.id);
             return next;
           });
+          return;
         }
         if (input === "p" && page > 1) {
           const newPage = page - 1;
           setPage(newPage);
           performSearch(query, categoryId, newPage);
+          return;
         }
         if (input === "n") {
           const newPage = page + 1;
           setPage(newPage);
           performSearch(query, categoryId, newPage);
+          return;
         }
       } else if (focusedSection === "history") {
         if (key.name === "up") setHistoryIndex((prev) => Math.max(0, prev - 1));
@@ -323,19 +412,27 @@ export function App() {
       } else if (focusedSection === "me") {
         if (key.name === "escape") setFocusedSection("search");
       } else if (focusedSection === "detail") {
+        if (rotationInterval) {
+          clearInterval(rotationInterval);
+          setRotationInterval(null);
+        }
         if (key.name === "escape" || key.name === "left") {
           setFocusedSection(previousSection);
           setSelectedListing(null);
+        }
+        if (input === " " && selectedListing) {
+          const isNowStarred = toggleStar(selectedListing);
+          setStarredIds((prev) => {
+            const next = new Set(prev);
+            if (isNowStarred) next.add(selectedListing.id);
+            else next.delete(selectedListing.id);
+            return next;
+          });
         }
       }
     },
     { release: false }
   );
-
-  const getFilteredSuggestions = () => {
-    if (query.trim().length === 0) return searchHistory.slice(0, 5);
-    return searchHistory.filter((h) => h.query.toLowerCase().includes(query.toLowerCase())).slice(0, 5);
-  };
 
   const handleCommandSubmit = async (value: string) => {
     const cmd = value.trim();
@@ -370,15 +467,7 @@ export function App() {
     });
   };
 
-  if (loading) {
-    return (
-      <box padding={2}>
-        <text fg="yellow">Checking authentication...</text>
-      </box>
-    );
-  }
-
-  if (!auth.isAuthenticated) {
+  if (!auth.isAuthenticated && !loading) {
     return (
       <box flexDirection="column" padding={2}>
         <text fg="red">Authentication Failed: {auth.error}</text>
@@ -390,58 +479,33 @@ export function App() {
   return (
     <box flexDirection="column" padding={1} width="100%" height="100%">
       <text fg="green">Willhaben CLI</text>
-      <text fg="dim">Authenticated via sweet-cookie</text>
+      <text fg="dim">
+        {loading ? "Checking authentication..." : "Authenticated via sweet-cookie"}
+      </text>
 
       <box flexDirection="column" marginTop={1}>
-        <box>
-          <text>Search: </text>
-          <input
-            value={query}
-            onChange={(value) => {
-              setQuery(value);
-              // Auto-select first matching suggestion when typing
-              const filtered = searchHistory.filter((h) =>
-                h.query.toLowerCase().includes(value.toLowerCase())
-              );
-              if (filtered.length > 0) {
-                setSuggestionIndex(0);
-              }
-              setHistoryFocused(false);
-            }}
-            onSubmit={() => {
-              // Enter submits selected suggestion if in history, otherwise current query
-              const suggestions = getFilteredSuggestions();
-              if (historyFocused && suggestions[suggestionIndex]) {
-                setQuery(suggestions[suggestionIndex].query);
-                setHistoryFocused(false);
-                handleSearchSubmit(suggestions[suggestionIndex].query);
-              } else if (query && query.trim()) {
-                handleSearchSubmit(query);
-              }
-            }}
-            placeholder="Type keyword or select from history..."
-            focused={focusedSection === "search"}
-          />
-        </box>
-
-        {focusedSection === "search" && getFilteredSuggestions().length > 0 && (
-          <box flexDirection="column" border borderStyle="single" borderColor={historyFocused ? "green" : "cyan"}>
-            <text fg="gray">Recent searches (↑↓ to navigate, Enter to select):</text>
-            {getFilteredSuggestions().map((item, index) => (
-              <text key={item.id} fg={index === suggestionIndex ? "green" : "white"} bg={index === suggestionIndex && historyFocused ? "gray" : undefined}>
-                {index === suggestionIndex ? "▶ " : "  "}
+        <SearchField
+          value={query}
+          onChange={(value) => setQuery(value)}
+          onSubmit={(value) => handleSearchSubmit(value)}
+          focused={focusedSection === "search"}
+        />
+        {focusedSection === "search" && historyMatches.length > 0 && (
+          <box flexDirection="column" border borderStyle="single" borderColor="gray">
+            {historyMatches.map((item, index) => (
+              <text key={item.id} fg="white">
                 {item.query}
               </text>
             ))}
-            {historyFocused && <text fg="dim">  ↑↓ navigate · Enter select · Esc close</text>}
           </box>
         )}
-
-        {focusedSection === "search" && !getFilteredSuggestions().length && query && (
-          <box marginTop={0}>
-            <text fg="dim">Press Enter to search, ↓ to browse categories</text>
-          </box>
-        )}
+        <box marginTop={0}>
+          <text fg="dim">
+            {query.trim()
+              ? "Enter: Search | Esc: Clear"
+              : "/: Commands | Ctrl+H: History"}
+          </text>
+        </box>
       </box>
 
       {searching && (
@@ -467,16 +531,13 @@ export function App() {
 
       {focusedSection === "command" && (
         <box marginTop={1} border borderStyle="rounded" flexDirection="column">
-          <box>
-            <text fg="yellow">COMMAND: </text>
-            <input
-              value={commandInput}
-              onChange={(value) => setCommandInput(value)}
-              onSubmit={() => handleCommandSubmit(commandInput)}
-              placeholder="Type command..."
-              focused
-            />
-          </box>
+          <SearchField
+            label="COMMAND: "
+            value={commandInput}
+            onChange={(value) => setCommandInput(value)}
+            onSubmit={(value) => handleCommandSubmit(value)}
+            focused
+          />
           <box marginTop={0}>
             {getCommandNames().filter((c) => c.startsWith(commandInput)).map((c) => (
               <text key={c} fg="dim">{c} </text>
@@ -554,6 +615,9 @@ export function App() {
       return null;
     }
 
+    const hasImage = (selectedListing.images?.length > 0) || !!selectedListing.imageUrl;
+    const imageUrl = selectedListing.images?.[0] || selectedListing.imageUrl;
+
     return (
       <box flexDirection="column" marginTop={1} border borderStyle="rounded" borderColor="white">
         <box flexDirection="row" justifyContent="space-between">
@@ -565,6 +629,39 @@ export function App() {
           </box>
         </box>
         <text fg="yellow">{selectedListing.priceText}</text>
+
+        {/* Image Preview with Bernstein color */}
+        {hasImage && (
+          <box marginTop={1} flexDirection="column">
+            <box flexDirection="row" justifyContent="space-between">
+              <text fg="yellow">📷 Image Preview:</text>
+              {config.asciiContrast === "rotate" && (
+                <text fg="cyan">Mode: {currentContrast}</text>
+              )}
+            </box>
+            <box marginTop={0}>
+              {asciiArt ? (
+                // Render ASCII art line by line with Bernstein (amber) color
+                <box flexDirection="column">
+                  {asciiArt.split("\n").filter(line => line.trim()).map((line, i) => (
+                    <text key={i} fg="#ffb000">{line}</text>
+                  ))}
+                </box>
+              ) : (
+                // Placeholder
+                <box flexDirection="column" border borderStyle="rounded" borderColor="gray" padding={1}>
+                  <text fg="gray">[ Converting image... ]</text>
+                </box>
+              )}
+            </box>
+            {imageUrl && (
+              <text fg="dim">
+                {imageUrl.substring(0, 60)}...
+              </text>
+            )}
+          </box>
+        )}
+
         <box marginTop={1} flexDirection="column">
           <text><strong>Location:</strong> {selectedListing.location}</text>
           <text><strong>Seller:</strong> {selectedListing.sellerName}</text>

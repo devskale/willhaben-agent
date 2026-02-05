@@ -1,6 +1,6 @@
 # Willhaben TUI - Development Guidelines
 
-A React-based TUI for interacting with willhaben.at, powered by `Ink`. Uses the `sweet-cookie` library for authentication.
+A React-based TUI for interacting with willhaben.at, powered by `opentui`. Uses the `sweet-cookie` library for authentication.
 
 ## Build Commands
 
@@ -45,8 +45,7 @@ willhaben/
 
 ```typescript
 import React, { useState, useEffect } from "react";
-import { Box, Text, useInput } from "ink";
-import TextInput from "ink-text-input";
+import { useKeyboard, useRenderer } from "@opentui/react";
 import { checkAuth } from "./agents/auth.js";
 ```
 
@@ -100,19 +99,25 @@ try {
 - Keep files under 150 lines when possible
 - Use `.tsx` for React components, `.ts` for pure TypeScript
 
-## Ink TUI Guidelines
+## OpenTUI Guidelines
 
-- Use `useInput` for keyboard handling
-- Escape key clears state: `if (key.escape) { ... }`
-- Ctrl+C exits naturally; no special handler needed
-- Display loading states with colored text
-- Use `Box` for layout, `Text` for content
+- Use `useKeyboard` for keyboard handling
+- Escape key clears state: `if (key.name === "escape") { ... }`
+- Ctrl+C should be handled via `renderer.destroy()`
+- Display loading states with colored text using `fg` and `bg`
+- Use `<box>` for layout, `<text>` for content, and `<input>` for input fields
+- Never call `process.exit()` directly; use `renderer.destroy()`
 
 ```typescript
-useInput((input, key) => {
-  if (key.escape) {
+const renderer = useRenderer();
+
+useKeyboard((key) => {
+  if (key.name === "escape") {
     setSearchResult(null);
     setQuery("");
+  }
+  if (key.ctrl && key.name === "c") {
+    renderer.destroy();
   }
 });
 ```

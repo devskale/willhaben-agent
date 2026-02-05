@@ -1,6 +1,9 @@
-#!/usr/bin/env node
-import React from 'react';
-import {render} from 'ink';
-import App from './app.js';
+import { createCliRenderer } from "@opentui/core";
+import { createRoot } from "@opentui/react";
+import { App } from "./app.js";
 
-render(<App />);
+const renderer = await createCliRenderer({
+  exitOnCtrlC: true,
+});
+
+createRoot(renderer).render(<App />);

@@ -1,15 +1,16 @@
 {
   "compilerOptions": {
     "target": "ESNext",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "lib": ["DOM", "ESNext"],
     "jsx": "react-jsx",
+    "jsxImportSource": "@opentui/react",
     "strict": true,
-    "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "outDir": "dist"
+    "outDir": "dist",
+    "noEmit": true
   },
   "include": ["src"]
 }

@@ -5,36 +5,22 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "tsx src/cli.tsx",
-    "view": "npx tsx view-product.ts",
-    "view-ascii": "npx tsx view-product.ts",
-    "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix",
+    "start": "bun run src/cli.tsx",
     "type-check": "tsc --noEmit",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
+    "@opentui/core": "^0.1.77",
+    "@opentui/react": "^0.1.77",
     "@steipete/sweet-cookie": "^0.1.0",
-    "better-sqlite3": "^12.6.2",
     "cheerio": "^1.1.2",
-    "image-to-ascii": "^3.3.0",
-    "ink": "^6.6.0",
-    "ink-select-input": "^6.2.0",
-    "ink-text-input": "^6.0.0",
     "react": "^19.2.3",
     "sharp": "^0.34.5"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
+    "@types/bun": "^1.2.8",
     "@types/node": "^25.0.6",
     "@types/react": "^19.2.8",
-    "@typescript-eslint/eslint-plugin": "^8.54.0",
-    "@typescript-eslint/parser": "^8.54.0",
-    "eslint": "^8.57.1",
-    "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "^7.0.1",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3",
-    "vitest": "^4.0.17"
+    "typescript": "^5.9.3"
   }
 }
