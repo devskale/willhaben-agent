@@ -105,7 +105,8 @@ const parseListing = (item: any): Listing => {
 export const searchItems = async (
   keyword: string,
   categoryId?: string,
-  page: number = 1
+  page: number = 1,
+  areaId?: number
 ): Promise<SearchResult> => {
   const { cookies } = await checkAuth();
   const headers = getHeaders(cookies);
@@ -114,8 +115,11 @@ export const searchItems = async (
   if (categoryId) {
     url += `&ATTRIBUTE_TREE=${categoryId}`;
   }
+  if (areaId) {
+    url += `&areaId=${areaId}`;
+  }
 
-  console.log(`[SEARCH] keyword="${keyword}", categoryId=${categoryId}, url=${url}`);
+  console.log(`[SEARCH] keyword="${keyword}", categoryId=${categoryId}, areaId=${areaId}, url=${url}`);
 
   try {
     const response = await fetch(url, { headers });

@@ -4,6 +4,7 @@
 export interface UserConfig {
   asciiWidth: 80 | 100 | 120 | "auto";           // Width for ASCII image rendering
   asciiContrast: "low" | "medium" | "high" | "rotate";  // ASCII character gradient
+  preferredLocation?: number;  // Preferred location area ID
 }
 
 export const DEFAULT_CONFIG: UserConfig = {
@@ -20,6 +21,21 @@ export const ASCII_CHAR_SETS = {
   medium: " .·░▒▓█", // Default gradient
   high: " .·░▒▓█#@", // Bold, more levels
 } as const;
+
+// Austrian Bundesländer location mapping
+export const LOCATIONS: Record<number, string> = {
+  1: "Burgenland",
+  2: "Kärnten",
+  3: "Niederösterreich",
+  4: "Oberösterreich",
+  5: "Salzburg",
+  6: "Steiermark",
+  7: "Tirol",
+  8: "Vorarlberg",
+  900: "Wien",
+};
+
+export const LOCATION_IDS = Object.keys(LOCATIONS).map(Number);
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -55,12 +71,19 @@ export async function getConfig(): Promise<UserConfig> {
     // Validate contrast
     const contrast = config.asciiContrast;
     const validContrast = VALID_ASCII_CONTRASTS.includes(contrast as any)
-      ? contrast as "low" | "medium" | "high"
+      ? contrast as "low" | "medium" | "high" | "rotate"
       : DEFAULT_CONFIG.asciiContrast;
+
+    // Validate location
+    let validLocation: number | undefined = config.preferredLocation;
+    if (validLocation !== undefined && !LOCATION_IDS.includes(validLocation)) {
+      validLocation = undefined;
+    }
 
     return {
       asciiWidth: validWidth,
       asciiContrast: validContrast,
+      preferredLocation: validLocation,
     };
   } catch {
     // Config doesn't exist or is invalid, return defaults

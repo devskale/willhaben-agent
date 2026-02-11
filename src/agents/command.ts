@@ -6,6 +6,7 @@ import {
   getStarredItems,
 } from "./db.js";
 import { getUserProfile, UserProfile } from "./user.js";
+import { setConfig, LOCATIONS, LOCATION_IDS } from "./config.js";
 
 export interface CommandContext {
   exit: () => void;
@@ -76,8 +77,15 @@ export const COMMANDS: Command[] = [
     },
   },
   {
+    name: "/location",
+    description: "Set or view preferred search location (Bundesland)",
+    action: async (ctx) => {
+      ctx.setCommandInput("/location");
+    },
+  },
+  {
     name: "/quit",
-    description: "Exit the application",
+    description: "Exit application",
     action: (ctx) => {
       ctx.exit();
     },

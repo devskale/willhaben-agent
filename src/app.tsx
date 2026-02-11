@@ -5,7 +5,7 @@ import { searchItems } from "./agents/search.js";
 import { getCommandNames, executeCommand, CommandContext } from "./agents/command.js";
 import { toggleStar, getStarredItems, getSearchHistory, addSearchHistory } from "./agents/db.js";
 import { SearchResult } from "./types.js";
-import { getConfig, ASCII_CHAR_SETS } from "./agents/config.js";
+import { getConfig, ASCII_CHAR_SETS, setConfig as saveConfig, LOCATIONS } from "./agents/config.js";
 import { SearchField } from "./components/SearchField.js";
 
 export function App() {
@@ -23,13 +23,19 @@ export function App() {
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
   const [selectedCategoryName, setSelectedCategoryName] = useState<string | null>(null);
 
   // Search History
   const refreshHistory = useCallback(() => {
-    // History is loaded when needed, no need to store in state
+    try {
+      const history = getSearchHistory();
+      setHistoryItems(history);
+    } catch (e) {
+      console.error("History error:", e);
+    }
   }, []);
 
   // Starred Items
@@ -58,9 +64,10 @@ export function App() {
   const [asciiArt, setAsciiArt] = useState<string | null>(null);
 
   // Config State
-  const [config, setConfig] = useState<{ asciiWidth: number | "auto"; asciiContrast: string }>({
+  const [config, setConfig] = useState<{ asciiWidth: number | "auto"; asciiContrast: string; preferredLocation?: number }>({
     asciiWidth: "auto",
     asciiContrast: "rotate",
+    preferredLocation: undefined,
   });
 
   // Image rotation state
@@ -166,7 +173,7 @@ export function App() {
     }
   }, [refreshHistory]);
 
-  const performSearch = async (q: string, catId?: string, p: number = 1) => {
+  const performSearch = async (q: string, catId?: string, p: number = 1, locId?: number) => {
     if (!q.trim()) return null;
     setSearching(true);
     setError(null);
@@ -179,7 +186,7 @@ export function App() {
     }
 
     try {
-      const result = await searchItems(q, catId, p);
+      const result = await searchItems(q, catId, p, locId);
       setSearchResult(result);
       if (p === 1) {
         setProductIndex(0);
@@ -223,10 +230,12 @@ export function App() {
         if (key.name === "escape") {
           setQuery("");
           setSearchResult(null);
+          setInfoMessage(null);
           return;
         }
 
         if (key.ctrl && input === "h") {
+          refreshHistory();
           setFocusedSection("history");
           setHistoryIndex(0);
           return;
@@ -262,7 +271,7 @@ export function App() {
           setCategoryId(newCatId);
           setSelectedCategoryName(selected.id === "all" ? null : selected.name);
           setPage(1);
-          performSearch(query, newCatId, 1).then((result) => {
+          performSearch(query, newCatId, 1, config.preferredLocation).then((result) => {
             if (key.name === "return" || !result?.categories?.length) {
               setFocusedSection("products");
               setProductIndex(0);
@@ -357,13 +366,13 @@ export function App() {
         if (input === "p" && page > 1) {
           const newPage = page - 1;
           setPage(newPage);
-          performSearch(query, categoryId, newPage);
+          performSearch(query, categoryId, newPage, config.preferredLocation);
           return;
         }
         if (input === "n") {
           const newPage = page + 1;
           setPage(newPage);
-          performSearch(query, categoryId, newPage);
+          performSearch(query, categoryId, newPage, config.preferredLocation);
           return;
         }
       } else if (focusedSection === "history") {
@@ -377,7 +386,7 @@ export function App() {
           setSelectedCategoryName(selected.categoryName || null);
           setPage(1);
           setFocusedSection("products");
-          performSearch(selected.query, selected.categoryId, 1);
+          performSearch(selected.query, selected.categoryId, 1, config.preferredLocation);
         }
       } else if (focusedSection === "starred") {
         if (key.name === "up") setStarredIndex((prev) => Math.max(0, prev - 1));
@@ -422,6 +431,39 @@ export function App() {
 
   const handleCommandSubmit = async (value: string) => {
     const cmd = value.trim();
+
+    // Handle /location <number> command
+    if (cmd === "/location") {
+      const locationList = Object.entries(LOCATIONS)
+        .map(([id, name]) => `  ${id}: ${name}`)
+        .join("\n");
+      const current = config.preferredLocation
+        ? `\nCurrent: ${LOCATIONS[config.preferredLocation]} (${config.preferredLocation})`
+        : "\nCurrent: No location set";
+      setInfoMessage(`Available locations (Bundesländer):\n${locationList}\n  0: No location filter${current}`);
+      setQuery("");
+      return;
+    }
+
+    if (cmd.startsWith("/location ")) {
+      const numStr = cmd.replace("/location ", "").trim();
+      const num = parseInt(numStr, 10);
+      if (numStr === "0" || (!isNaN(num) && Object.keys(LOCATIONS).includes(num.toString()))) {
+        const savedConfig = await saveConfig({ preferredLocation: numStr === "0" ? undefined : num });
+        setConfig(savedConfig);
+        const locationName = numStr === "0" ? "None" : LOCATIONS[num as keyof typeof LOCATIONS];
+        setInfoMessage(`Preferred location set to: ${locationName}`);
+        setQuery("");
+        setCommandInput("");
+        setFocusedSection("search");
+        return;
+      } else {
+        setInfoMessage(`Invalid location ID. Use /location to see available options.`);
+        setQuery("");
+        return;
+      }
+    }
+
     const context: CommandContext = {
       exit: () => renderer.destroy(),
       setCommandInput,
@@ -435,7 +477,7 @@ export function App() {
       searchInputRef: { current: null },
     };
     await executeCommand(cmd, context);
-    if (cmd !== "/search" && cmd !== "/history" && cmd !== "/starred" && cmd !== "/me") {
+    if (cmd !== "/search" && cmd !== "/history" && cmd !== "/starred" && cmd !== "/me" && cmd !== "/location") {
       setCommandInput("");
       setFocusedSection("search");
     }
@@ -443,11 +485,19 @@ export function App() {
 
   const handleSearchSubmit = (value: string) => {
     if (!value || !value.trim()) return;
+
+    // Handle commands in search bar (starting with /)
+    if (value.startsWith("/")) {
+      handleCommandSubmit(value);
+      return;
+    }
+
+    setInfoMessage(null);
     setQuery(value);
     setPage(1);
     setCategoryId(undefined);
     setSelectedCategoryName(null);
-    performSearch(value, undefined, 1).then(() => {
+    performSearch(value, undefined, 1, config.preferredLocation).then(() => {
       setFocusedSection("products");
       setProductIndex(0);
     });
@@ -472,7 +522,10 @@ export function App() {
       <box flexDirection="column" marginTop={1}>
         <SearchField
           value={query}
-          onChange={(value) => setQuery(value)}
+          onChange={(value) => {
+            setQuery(value);
+            setInfoMessage(null);
+          }}
           onSubmit={(value) => handleSearchSubmit(value)}
           focused={focusedSection === "search"}
         />
@@ -482,6 +535,11 @@ export function App() {
               ? "Enter: Search | Esc: Clear"
               : "/: Commands | Ctrl+H: History"}
           </text>
+          {config.preferredLocation && (
+            <text fg="dim">
+              Location: {LOCATIONS[config.preferredLocation]}
+            </text>
+          )}
         </box>
       </box>
 
@@ -497,6 +555,14 @@ export function App() {
         </box>
       )}
 
+      {infoMessage && (
+        <box marginTop={1} flexDirection="column">
+          {infoMessage.split("\n").map((line, i) => (
+            <text key={i} fg="cyan">{line}</text>
+          ))}
+        </box>
+      )}
+
       {searchResult && (
         <box flexDirection="column" marginTop={1}>
           {renderCategories()}
@@ -505,6 +571,9 @@ export function App() {
       )}
 
       {focusedSection === "detail" && renderDetail()}
+      {focusedSection === "history" && renderHistory()}
+      {focusedSection === "starred" && renderStarred()}
+      {focusedSection === "me" && renderMe()}
 
       {focusedSection === "command" && (
         <box marginTop={1} border borderStyle="rounded" flexDirection="column">
@@ -647,6 +716,78 @@ export function App() {
         <box marginTop={1}>
           <text fg="dim">←/Esc: Back to list</text>
         </box>
+      </box>
+    );
+  }
+
+  function renderHistory() {
+    const isFocused = focusedSection === "history";
+    return (
+      <box flexDirection="column" marginTop={1}>
+        <text fg={isFocused ? "green" : "cyan"}>History (Enter: Search, Esc: Back)</text>
+        {historyItems.length === 0 ? (
+          <text fg="dim">No recent searches.</text>
+        ) : (
+          <box flexDirection="column" marginTop={1}>
+            {historyItems.slice(0, 10).map((item, i) => (
+              <text key={item.id} fg={i === historyIndex && isFocused ? "green" : "white"}>
+                {i === historyIndex && isFocused ? "▶ " : "  "}
+                {item.query}
+                {item.categoryName ? ` (${item.categoryName})` : ""}
+              </text>
+            ))}
+          </box>
+        )}
+      </box>
+    );
+  }
+
+  function renderStarred() {
+    const isFocused = focusedSection === "starred";
+    return (
+      <box flexDirection="column" marginTop={1}>
+        <text fg={isFocused ? "green" : "cyan"}>Starred (Space: Unstar, Esc: Back)</text>
+        {starredItemsList.length === 0 ? (
+          <text fg="dim">No starred items.</text>
+        ) : (
+          <box flexDirection="column" marginTop={1}>
+            {starredItemsList.slice(0, 10).map((item, i) => (
+              <box key={item.id} flexDirection="row" justifyContent="space-between">
+                <box width="65%">
+                  <text fg={i === starredIndex && isFocused ? "green" : "white"}>
+                    {i === starredIndex && isFocused ? "▶ " : "  "}
+                    {item.title}
+                  </text>
+                </box>
+                <box width="15%">
+                  <text fg="green">{item.priceText}</text>
+                </box>
+                <box width="20%">
+                  <text fg="dim">{item.sellerName}</text>
+                </box>
+              </box>
+            ))}
+          </box>
+        )}
+      </box>
+    );
+  }
+
+  function renderMe() {
+    const isFocused = focusedSection === "me";
+    return (
+      <box flexDirection="column" marginTop={1}>
+        <text fg={isFocused ? "green" : "cyan"}>Profile (Esc: Back)</text>
+        {loadingProfile && <text fg="yellow">Loading profile...</text>}
+        {!loadingProfile && !userProfile && <text fg="dim">No profile data available.</text>}
+        {!loadingProfile && userProfile && (
+          <box flexDirection="column" marginTop={1}>
+            <text>Name: {userProfile.displayName || "Unknown"}</text>
+            {userProfile.email && <text>Email: {userProfile.email}</text>}
+            {userProfile.postCode && <text>Postcode: {userProfile.postCode}</text>}
+            {userProfile.memberSince && <text>Member Since: {userProfile.memberSince}</text>}
+          </box>
+        )}
       </box>
     );
   }
