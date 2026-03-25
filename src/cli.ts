@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { checkAuth } from "./agents/auth.js";
 import { searchItems, getListingDetails, getSeller, getCategoryTree } from "./agents/search.js";
+import { FALLBACK_LOCATIONS } from "./agents/locations.js";
 import {
   getStarredItems,
   toggleStar,
@@ -11,6 +12,7 @@ import {
 const COMMANDS = {
   search: "Search for listings (returns items + categories)",
   tree: "Browse category tree (optional: category ID to drill down)",
+  locations: "List Austrian states (Bundesländer) for location filtering",
   view: "View listing details",
   seller: "Get seller info",
   auth: "Check authentication status",
@@ -74,9 +76,18 @@ async function cmdSearch(positional: string[], flags: Record<string, string | bo
 
   const page = typeof flags.page === "string" ? parseInt(flags.page, 10) : 1;
   const category = typeof flags.category === "string" ? flags.category : undefined;
+  
+  // Parse location IDs (comma-separated)
+  let areaIds: number[] | undefined;
+  if (typeof flags.location === "string") {
+    areaIds = flags.location
+      .split(",")
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((n) => !isNaN(n));
+  }
 
   try {
-    const result = await searchItems(query, category, page);
+    const result = await searchItems(query, category, page, areaIds);
 
     // Record in history
     try {
@@ -200,6 +211,14 @@ async function cmdTree(positional: string[], flags: Record<string, string | bool
   }
 }
 
+function cmdLocations(format: OutputFormat) {
+  const locations = Object.entries(FALLBACK_LOCATIONS).map(([id, name]) => ({
+    id: Number(id),
+    name,
+  }));
+  output(locations, format);
+}
+
 function cmdHelp(format: OutputFormat) {
   const help = {
     name: "whcli",
@@ -209,7 +228,8 @@ function cmdHelp(format: OutputFormat) {
       "whcli tree                          # Root categories",
       "whcli tree 2691                     # Drill into Smartphones/Telefonie",
       "whcli tree 2691 --keyword pixel     # Categories filtered by 'pixel'",
-      "whcli search 'pixel'                # Search with category suggestions",
+      "whcli locations                     # List Austrian states",
+      "whcli search 'pixel' --location 900,1,3  # Search in Wien, Burgenland, NÖ",
       "whcli search 'pixel' --category 5014402  # Search in Google category",
       "whcli view 12345678",
       "whcli seller abc123",
@@ -232,6 +252,9 @@ async function main() {
       break;
     case "tree":
       await cmdTree(positional, flags, format);
+      break;
+    case "locations":
+      cmdLocations(format);
       break;
     case "view":
       await cmdView(positional, flags, format);

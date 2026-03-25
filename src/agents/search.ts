@@ -104,7 +104,8 @@ const parseListing = (item: any): Listing => {
 export const searchItems = async (
   keyword: string,
   categoryId?: string,
-  page: number = 1
+  page: number = 1,
+  areaIds?: number[]
 ): Promise<SearchResult> => {
   const { cookies } = await checkAuth();
   const headers = getHeaders(cookies);
@@ -112,6 +113,11 @@ export const searchItems = async (
   let url = `${BASE_URL}/iad/kaufen-und-verkaufen/marktplatz?keyword=${encodeURIComponent(keyword)}&page=${page}`;
   if (categoryId) {
     url += `&ATTRIBUTE_TREE=${categoryId}`;
+  }
+  if (areaIds && areaIds.length > 0) {
+    for (const areaId of areaIds) {
+      url += `&areaId=${areaId}`;
+    }
   }
 
   try {
