@@ -8,6 +8,7 @@ import {
   getSearchHistory,
   addSearchHistory,
 } from "./agents/db.js";
+import { sendMessage, getConversations, getMessages } from "./agents/messaging.js";
 
 const COMMANDS = {
   search: "Search for listings (returns items + categories)",
@@ -16,6 +17,8 @@ const COMMANDS = {
   view: "View listing details",
   seller: "Get seller info",
   auth: "Check authentication status",
+  message: "Send a message to a seller (requires authentication)",
+  chats: "List conversations or view messages (optional: conversation UUID)",
   favorites: "Manage favorites (list/add/remove)",
   history: "Show search history",
   help: "Show this help",
@@ -136,8 +139,10 @@ async function cmdSeller(positional: string[], flags: Record<string, string | bo
 }
 
 async function cmdAuth(flags: Record<string, string | boolean>, format: OutputFormat) {
+  const useCDP = flags.cdp === true;
+
   try {
-    const auth = await checkAuth();
+    const auth = await checkAuth(useCDP);
     output(
       {
         authenticated: auth.isAuthenticated,
@@ -219,6 +224,80 @@ function cmdLocations(format: OutputFormat) {
   output(locations, format);
 }
 
+async function cmdMessage(positional: string[], flags: Record<string, string | boolean>, format: OutputFormat) {
+  const adId = positional[0];
+  const message = positional.slice(1).join(" ");
+
+  if (!adId) {
+    output({ error: "Missing listing ID. Usage: whcli message <adId> <message>" }, format);
+    process.exit(1);
+  }
+
+  if (!message) {
+    output({ error: "Missing message. Usage: whcli message <adId> <message>" }, format);
+    process.exit(1);
+  }
+
+  try {
+    const result = await sendMessage({
+      adId,
+      message,
+      copyToSender: flags["copy"] === true,
+      showPhone: flags["show-phone"] === true,
+      phone: typeof flags.phone === "string" ? flags.phone : undefined,
+    });
+
+    output(result, format);
+
+    if (!result.success) {
+      process.exit(1);
+    }
+  } catch (e) {
+    output({ error: e instanceof Error ? e.message : "Failed to send message" }, format);
+    process.exit(1);
+  }
+}
+
+async function cmdChats(positional: string[], flags: Record<string, string | boolean>, format: OutputFormat) {
+  const conversationId = positional[0];
+
+  try {
+    // If conversation ID provided, get messages for that conversation
+    if (conversationId) {
+      const conversation = await getMessages(conversationId);
+      output(conversation, format);
+      return;
+    }
+
+    // Otherwise, list all conversations
+    const result = await getConversations();
+    
+    if (!result.success) {
+      output({ error: result.error }, format);
+      process.exit(1);
+    }
+
+    // Simplify output for readability
+    const simplified = result.conversations.map((c) => ({
+      id: c.id,
+      partner: c.partnerName,
+      adTitle: c.adTitle,
+      adId: c.adId,
+      adStatus: c.adStatus,
+      price: c.adPrice,
+      lastMessage: c.lastMessage?.message?.substring(0, 100),
+      lastMessageAt: c.lastMessage?.timestamp,
+      isMine: c.lastMessage?.isMine,
+      unseen: c.unseen,
+    }));
+
+    output({ total: result.total, conversations: simplified }, format);
+  } catch (e) {
+    output({ error: e instanceof Error ? e.message : "Failed to fetch chats" }, format);
+    process.exit(1);
+  }
+}
+
 function cmdHelp(format: OutputFormat) {
   const help = {
     name: "whcli",
@@ -233,7 +312,11 @@ function cmdHelp(format: OutputFormat) {
       "whcli search 'pixel' --category 5014402  # Search in Google category",
       "whcli view 12345678",
       "whcli seller abc123",
-      "whcli auth",
+      "whcli auth                          # Check auth (sweet-cookie)",
+      "whcli auth --cdp                    # Check auth (Chrome DevTools)",
+      "whcli message 12345678 'Hallo, ist das noch verfügbar?'",
+      "whcli chats                         # List all conversations",
+      "whcli chats <uuid>                  # View messages in a conversation",
       "whcli favorites list",
       "whcli history",
     ],
@@ -264,6 +347,12 @@ async function main() {
       break;
     case "auth":
       await cmdAuth(flags, format);
+      break;
+    case "message":
+      await cmdMessage(positional, flags, format);
+      break;
+    case "chats":
+      await cmdChats(positional, flags, format);
       break;
     case "favorites":
       await cmdFavorites(positional, flags, format);

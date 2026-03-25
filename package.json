@@ -15,9 +15,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@steipete/sweet-cookie": "^0.1.0",
+    "@steipete/sweet-cookie": "^0.2.0",
     "better-sqlite3": "^12.6.2",
-    "cheerio": "^1.1.2"
+    "cheerio": "^1.1.2",
+    "playwright": "^1.58.2",
+    "puppeteer-core": "^24.40.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

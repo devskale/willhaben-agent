@@ -1,4 +1,5 @@
 import { getCookies, toCookieHeader } from "@steipete/sweet-cookie";
+import { getCookiesViaCDP, toCookieHeader as toCDPCookieHeader } from "../lib/cdpCookies.js";
 
 export interface AuthState {
   isAuthenticated: boolean;
@@ -13,18 +14,58 @@ export interface AuthState {
   };
 }
 
-export const checkAuth = async (): Promise<AuthState> => {
+export const checkAuth = async (useCDP = false): Promise<AuthState> => {
   try {
-    const { cookies } = await getCookies({
-      url: "https://www.willhaben.at",
-      browsers: ["chrome", "edge", "firefox", "safari"],
-    });
+    // Use Chrome Beta - cookies are stored in a different profile path
+    // Chrome Beta on Windows: %LOCALAPPDATA%\Google\Chrome Beta\User Data\Default\Network\Cookies
+    const localAppData = process.env.LOCALAPPDATA || '';
+    const chromeBetaProfile = `${localAppData}/Google/Chrome Beta/User Data/Default`;
 
-    if (cookies.length === 0) {
-      return { isAuthenticated: false, cookies: "" };
+    let cookieHeader: string;
+
+    if (useCDP) {
+      // Use CDP (Chrome DevTools Protocol) - bypasses v20 encryption
+      // IMPORTANT: Chrome Beta must be closed!
+      const result = await getCookiesViaCDP({
+        urls: ["https://www.willhaben.at"],
+      });
+
+      if (result.error) {
+        return {
+          isAuthenticated: false,
+          cookies: "",
+          error: result.error,
+        };
+      }
+
+      if (result.cookies.length === 0) {
+        return { isAuthenticated: false, cookies: "" };
+      }
+
+      cookieHeader = toCDPCookieHeader(result.cookies);
+    } else {
+      // Use sweet-cookie (may fail with v20 cookies)
+      const { cookies, warnings } = await getCookies({
+        url: "https://www.willhaben.at",
+        browsers: ["chrome"],
+        chromeProfile: chromeBetaProfile,
+      });
+
+      if (cookies.length === 0) {
+        // Check if v20 warning was issued
+        const v20Warning = warnings.find(w => w.includes('v20'));
+        if (v20Warning) {
+          return {
+            isAuthenticated: false,
+            cookies: "",
+            error: "Chrome v20 cookies detected. Use --cdp flag or close Chrome Beta and try again.",
+          };
+        }
+        return { isAuthenticated: false, cookies: "" };
+      }
+
+      cookieHeader = toCookieHeader(cookies);
     }
-
-    const cookieHeader = toCookieHeader(cookies);
 
     // Validate cookies by fetching the home page and checking for user data
     const response = await fetch("https://www.willhaben.at/", {
