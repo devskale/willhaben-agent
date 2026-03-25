@@ -46,6 +46,18 @@ export interface SearchResult {
   categories: CategorySuggestion[];
 }
 
+export interface CategoryNode {
+  id: string;
+  name: string;
+  count?: number;
+}
+
+export interface CategoryTree {
+  categoryId?: string;
+  categoryName?: string;
+  children: CategoryNode[];
+}
+
 export type FocusedSection =
   | "search"
   | "categories"

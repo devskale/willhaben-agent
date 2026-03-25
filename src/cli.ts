@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { checkAuth } from "./agents/auth.js";
-import { searchItems, getListingDetails, getSeller } from "./agents/search.js";
+import { searchItems, getListingDetails, getSeller, getCategoryTree } from "./agents/search.js";
 import {
   getStarredItems,
   toggleStar,
@@ -9,7 +9,8 @@ import {
 } from "./agents/db.js";
 
 const COMMANDS = {
-  search: "Search for listings",
+  search: "Search for listings (returns items + categories)",
+  tree: "Browse category tree (optional: category ID to drill down)",
   view: "View listing details",
   seller: "Get seller info",
   auth: "Check authentication status",
@@ -186,19 +187,34 @@ function cmdHistory(format: OutputFormat) {
   output(history, format);
 }
 
+async function cmdTree(positional: string[], flags: Record<string, string | boolean>, format: OutputFormat) {
+  const categoryId = positional[0];
+  const keyword = typeof flags.keyword === "string" ? flags.keyword : undefined;
+
+  try {
+    const tree = await getCategoryTree(categoryId, keyword);
+    output(tree, format);
+  } catch (e) {
+    output({ error: e instanceof Error ? e.message : "Failed to fetch category tree" }, format);
+    process.exit(1);
+  }
+}
+
 function cmdHelp(format: OutputFormat) {
   const help = {
     name: "whcli",
     description: "Willhaben.at CLI for agent automation",
     commands: Object.entries(COMMANDS).map(([name, desc]) => ({ name, description: desc })),
     examples: [
-      "whcli search 'iphone 15' --json",
-      "whcli search 'macbook' --category 880 --page 2",
+      "whcli tree                          # Root categories",
+      "whcli tree 2691                     # Drill into Smartphones/Telefonie",
+      "whcli tree 2691 --keyword pixel     # Categories filtered by 'pixel'",
+      "whcli search 'pixel'                # Search with category suggestions",
+      "whcli search 'pixel' --category 5014402  # Search in Google category",
       "whcli view 12345678",
       "whcli seller abc123",
       "whcli auth",
       "whcli favorites list",
-      "whcli favorites add --data '{\"id\":\"123\",\"title\":\"...\",...}'",
       "whcli history",
     ],
   };
@@ -213,6 +229,9 @@ async function main() {
   switch (command) {
     case "search":
       await cmdSearch(positional, flags, format);
+      break;
+    case "tree":
+      await cmdTree(positional, flags, format);
       break;
     case "view":
       await cmdView(positional, flags, format);

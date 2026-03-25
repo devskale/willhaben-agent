@@ -6,6 +6,8 @@ import {
   SearchResult,
   Seller,
   CategorySuggestion,
+  CategoryTree,
+  CategoryNode,
 } from "../types.js";
 
 const BASE_URL = "https://www.willhaben.at";
@@ -203,6 +205,121 @@ export const searchItems = async (
     console.error("Search error:", error);
     throw error;
   }
+};
+
+export const getCategoryTree = async (
+  categoryId?: string,
+  keyword?: string
+): Promise<CategoryTree> => {
+  const { cookies } = await checkAuth();
+  const headers = getHeaders(cookies);
+
+  // Build URL - use a broad search to get category structure
+  let url = `${BASE_URL}/iad/kaufen-und-verkaufen/marktplatz?page=1`;
+  if (keyword) {
+    url += `&keyword=${encodeURIComponent(keyword)}`;
+  }
+  if (categoryId) {
+    url += `&ATTRIBUTE_TREE=${categoryId}`;
+  }
+
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch categories: ${response.status}`);
+  }
+
+  const html = await response.text();
+  const $ = load(html);
+  const nextData = $("#__NEXT_DATA__").html();
+
+  if (!nextData) {
+    throw new Error("Missing __NEXT_DATA__");
+  }
+
+  const data = JSON.parse(nextData);
+  const searchResult = data.props?.pageProps?.searchResult;
+  const categorySuggestionsData = data.props?.pageProps?.categorySuggestions || [];
+
+  const children: CategoryNode[] = [];
+
+  if (searchResult?.navigatorGroups) {
+    const isCategoryGroup = (g: any) =>
+      g.id === "attribute_tree" ||
+      g.name === "ATTRIBUTE_TREE" ||
+      g.id === "category" ||
+      g.label === "Kategorie";
+
+    let categoryGroup = searchResult.navigatorGroups.find(isCategoryGroup);
+
+    // If not found, try nested navigatorList
+    if (!categoryGroup) {
+      for (const group of searchResult.navigatorGroups) {
+        if (group.navigatorList) {
+          const found = group.navigatorList.find(isCategoryGroup);
+          if (found) {
+            categoryGroup = found;
+            break;
+          }
+        }
+      }
+    }
+
+    if (categoryGroup) {
+      if (categoryGroup.values) {
+        for (const val of categoryGroup.values) {
+          children.push({
+            id: val.value,
+            name: val.label,
+            count: val.hits || 0,
+          });
+        }
+      } else if (categoryGroup.groupedPossibleValues?.[0]?.possibleValues) {
+        for (const val of categoryGroup.groupedPossibleValues[0].possibleValues) {
+          const id = val.urlParamRepresentationForValue?.find(
+            (p: any) => p.urlParameterName === "ATTRIBUTE_TREE"
+          )?.value;
+          if (id) {
+            children.push({
+              id,
+              name: val.label,
+              count: val.hits || 0,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Fallback to categorySuggestions if no navigator groups
+  if (children.length === 0 && categorySuggestionsData.length > 0) {
+    for (const cat of categorySuggestionsData) {
+      children.push({
+        id: String(cat.id),
+        name: cat.name,
+        count: cat.count || 0,
+      });
+    }
+  }
+
+  // Sort by count descending
+  children.sort((a, b) => (b.count || 0) - (a.count || 0));
+
+  // Try to get the current category name from the response
+  let categoryName: string | undefined;
+  if (categoryId && searchResult?.selectedNavigators) {
+    const selected = searchResult.selectedNavigators.find(
+      (n: any) => n.name === "ATTRIBUTE_TREE"
+    );
+    if (selected?.values?.[0]?.label) {
+      categoryName = selected.values[0].label;
+    }
+  }
+
+  return {
+    categoryId,
+    categoryName,
+    children,
+  };
 };
 
 export const getListingDetails = async (
