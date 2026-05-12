@@ -6,15 +6,15 @@ A JSON-first CLI for interacting with willhaben.at, designed for agent automatio
 
 ```bash
 # Install dependencies
-npm install
+pnpm install
 
 # Run CLI
-npm start -- <command>
+pnpm start -- <command>
 
 # Examples
-npm start -- search "iphone 15"
-npm start -- view 12345678
-npm start -- auth
+pnpm start -- search "iphone 15"
+pnpm start -- view 12345678
+pnpm start -- auth
 ```
 
 ## Commands
@@ -101,7 +101,7 @@ willhaben/
 
 ```bash
 # Run all tests
-npm test
+pnpm test
 
 # Watch mode
 npx vitest
@@ -111,10 +111,10 @@ npx vitest
 
 ```bash
 # Type check
-npm run type-check
+pnpm run type-check
 
 # Build to dist/
-npm run build
+pnpm run build
 ```
 
 ## Important Notes

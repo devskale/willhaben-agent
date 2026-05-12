@@ -7,12 +7,17 @@ import {
   toggleStar,
   getSearchHistory,
   addSearchHistory,
+  getWishlist,
+  addWishlist,
+  removeWishlist,
+  toggleWishlist,
 } from "./agents/db.js";
 import { sendMessage, getConversations, getMessages } from "./agents/messaging.js";
 
 const COMMANDS = {
   search: "Search for listings (returns items + categories)",
   tree: "Browse category tree (optional: category ID to drill down)",
+  wishlist: "Manage search wishlist (list / add / remove / toggle)",
   locations: "List Austrian states (Bundesländer) for location filtering",
   view: "View listing details",
   seller: "Get seller info",
@@ -92,9 +97,19 @@ async function cmdSearch(positional: string[], flags: Record<string, string | bo
   try {
     const result = await searchItems(query, category, page, areaIds);
 
-    // Record in history
+    // Record in history with result metadata
     try {
-      addSearchHistory(query, category);
+      const prices = result.items
+        .map(i => i.price)
+        .filter((p): p is number => p !== null);
+      addSearchHistory(
+        query,
+        result.totalFound,
+        category,
+        prices.length > 0 ? Math.min(...prices) : undefined,
+        prices.length > 0 ? Math.max(...prices) : undefined,
+        areaIds?.[0],
+      );
     } catch {
       // Ignore history errors
     }
@@ -201,6 +216,57 @@ async function cmdFavorites(positional: string[], flags: Record<string, string |
 function cmdHistory(format: OutputFormat) {
   const history = getSearchHistory();
   output(history, format);
+}
+
+function cmdWishlist(positional: string[], flags: Record<string, string | boolean>, format: OutputFormat) {
+  const subcommand = positional[0];
+
+  if (!subcommand || subcommand === 'list') {
+    const all = typeof flags.all === 'boolean' ? false : true;
+    const items = getWishlist(all);
+    output(items, format);
+    return;
+  }
+
+  if (subcommand === 'add') {
+    const searchQuery = positional[1];
+    if (!searchQuery) {
+      output({ error: 'Usage: whcli wishlist add <query> [--description <text>] [--category <id>] [--max-price <amount>] [--notes <text>]' }, format);
+      process.exit(1);
+    }
+    const description = typeof flags.description === 'string' ? flags.description : undefined;
+    const categoryId = typeof flags.category === 'string' ? parseInt(flags.category, 10) : undefined;
+    const priceMax = typeof flags['max-price'] === 'string' ? parseFloat(flags['max-price']) : undefined;
+    const notes = typeof flags.notes === 'string' ? flags.notes : undefined;
+    const item = addWishlist(searchQuery, description, categoryId, priceMax, notes);
+    output(item, format);
+    return;
+  }
+
+  if (subcommand === 'remove') {
+    const id = parseInt(positional[1], 10);
+    if (isNaN(id)) {
+      output({ error: 'Usage: whcli wishlist remove <id>' }, format);
+      process.exit(1);
+    }
+    const ok = removeWishlist(id);
+    output({ removed: ok, id }, format);
+    return;
+  }
+
+  if (subcommand === 'toggle') {
+    const id = parseInt(positional[1], 10);
+    if (isNaN(id)) {
+      output({ error: 'Usage: whcli wishlist toggle <id>' }, format);
+      process.exit(1);
+    }
+    const ok = toggleWishlist(id);
+    output({ toggled: ok, id }, format);
+    return;
+  }
+
+  output({ error: `Unknown wishlist subcommand: ${subcommand}. Use list/add/remove/toggle.` }, format);
+  process.exit(1);
 }
 
 async function cmdTree(positional: string[], flags: Record<string, string | boolean>, format: OutputFormat) {
@@ -359,6 +425,9 @@ async function main() {
       break;
     case "history":
       cmdHistory(format);
+      break;
+    case "wishlist":
+      cmdWishlist(positional, flags, format);
       break;
     case "help":
     case "--help":
