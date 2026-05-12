@@ -352,17 +352,26 @@ export const getListingDetails = async (
   const basicListing = parseListing(adData);
   const attributes = parseAttributes(adData);
 
-  const images = (adData.images || [])
-    .map((img: any) => img.mainImageUrl)
+  const rawImages = adData.images || [];
+  const images = rawImages
+    .map((img: any) => {
+      if (typeof img === "string") return img;
+      return img?.mainImageUrl || img?.url || img?.src || null;
+    })
     .filter(Boolean);
+
+  // Fallback: extract cache URLs from HTML
+  const fallbackImages = images.length > 0 ? [] :
+    [...(html.match(/https:\/\/cache\.willhaben\.at\/mmo\/[^"]+\.(jpg|png|webp)/gi) || [])]
+      .filter(u => !u.includes("campaigns") && !u.includes("/img/delivery"));
 
   return {
     ...basicListing,
     fullDescription: adData.body || "",
-    images,
+    images: images.length > 0 ? images : fallbackImages,
     attributes,
     phone: attributes["PHONE"]?.[0],
-    views: undefined, // Not easily available in initial data
+    views: undefined,
   };
 };
 
@@ -388,3 +397,101 @@ export const getSeller = async (userId: string): Promise<Seller> => {
     location: data.location || "",
   };
 };
+
+export interface ListingImage {
+  url: string;
+  width: number;
+  height: number;
+}
+
+export interface ListingWithImages {
+  id: string;
+  title: string;
+  priceText: string;
+  price: number | null;
+  location: string;
+  isPrivate: boolean;
+  isDealer: boolean;
+  description: string;
+  images: ListingImage[];
+  imageCount: number;
+}
+
+/**
+ * Fetch listing details with image URLs extracted from HTML.
+ * Works with public (no-login) and authenticated requests.
+ */
+export const getListingImages = async (adId: string): Promise<ListingWithImages> => {
+  const url = `${BASE_URL}/iad/object?adId=${adId}`;
+  
+  const userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36";
+  let html: string;
+  
+  const resp = await fetch(url, {
+    headers: { "User-Agent": userAgent },
+    redirect: "follow",
+  });
+  html = await resp.text();
+
+  // DEBUG
+  if (!html.includes("__NEXT_DATA__")) {
+    throw new Error(`Missing __NEXT_DATA__. Status=${resp.status} URL=${resp.url} Len=${html.length} Body=${html.substring(0,200)}`);
+  }
+
+  const $ = load(html);
+  const nextData = $("#__NEXT_DATA__").html();
+  if (!nextData) throw new Error("Missing __NEXT_DATA__");
+
+  const data = JSON.parse(nextData);
+  const adData = data.props?.pageProps?.advertDetails;
+  if (!adData) throw new Error("Advert details not found");
+
+  const basicListing = parseListing(adData);
+  const attrs = parseAttributes(adData);
+
+  // Extract all cache.willhaben.at image URLs from raw HTML
+  const allMatches = html.match(/https:\/\/cache\.willhaben\.at\/mmo\/[^"]+\.(jpg|png|webp)/gi) || [];
+  const allUrls = [...new Set(allMatches)]; // dedupe
+
+  // Filter: remove UI icons, campaign banners, seller avatars
+  const productUrls = allUrls.filter(u =>
+    !u.includes("campaigns") &&
+    !u.includes("/img/delivery") &&
+    !u.includes("userProfile") &&
+    u.includes("mmo/")
+  );
+
+  // Each photo has 3 size variants: original, _thumb, _hoved
+  // For --all-images: keep only _hoved (largest) per unique photo
+  const photoMap = new Map<string, string>(); // hash -> best URL
+  for (const url of productUrls) {
+    // Extract base: remove size suffix but keep the unique photo hash
+    const match = url.match(/^(.+?)(?:_thumb|_hoved)?\.jpg$/);
+    if (!match) continue;
+    const [_, base] = match;
+    // Prefer _hoved > original > thumb
+    const existing = photoMap.get(base);
+    if (!existing || url.includes("_hoved")) {
+      photoMap.set(base, url.includes("_hoved") ? url : base + "_hoved.jpg");
+    }
+  }
+  
+  const allImages: ListingImage[] = Array.from(photoMap.values()).map(url => ({
+    url,
+    width: 942,
+    height: 1200,
+  }));
+
+  return {
+    id: adId,
+    title: basicListing.title,
+    priceText: basicListing.priceText || "",
+    price: basicListing.price,
+    location: attrs["LOCATION/ADDRESS_2"]?.[0] || attrs["LOCATION/ADDRESS_1"]?.[0] || "",
+    isPrivate: attrs.ISPRIVATE?.[0] === "1",
+    isDealer: attrs.DEALER?.[0] === "1",
+    description: adData.body || attrs.DESCRIPTION?.[0] || "",
+    images: allImages,
+    imageCount: allImages.length,
+  };
+};;

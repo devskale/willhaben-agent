@@ -12,13 +12,15 @@
 
 1. [Architecture Overview](#architecture-overview)
 2. [Public APIs (No Auth)](#public-apis-no-auth)
-3. [Internal REST API (`api.willhaben.at`)](#internal-rest-api-apiwillhabenat)
-4. [Search APIs (`webapi` + `ad-search.willhaben.at`)](#search-apis-webapi--ad-searchwillhabenat)
-5. [Messaging & Chat APIs](#messaging--chat-apis)
-6. [Analytics / Event Logging APIs](#analytics--event-logging-apis)
-7. [AdTech / DAC APIs](#adtech--dac-apis)
-8. [Required Headers & Auth](#required-auth--auth)
-9. [Discovery Methodology](#discovery-methodology)
+3. [Image CDN (`cache.willhaben.at`)](#image-cdn-cachewillhabenat)
+4. [Internal REST API (`api.willhaben.at`)](#internal-rest-api-apiwillhabenat)
+5. [Search APIs (`webapi` + `ad-search.willhaben.at`)](#search-apis-webapi--ad-searchwillhabenat)
+6. [Messaging & Chat APIs](#messaging--chat-apis)
+7. [Analytics / Event Logging APIs](#analytics--event-logging-apis)
+8. [AdTech / DAC APIs](#adtech--dac-apis)
+9. [Required Headers & Auth](#required-headers--auth)
+10. [Discovery Methodology](#discovery-methodology)
+11. [Migration Opportunities](#migration-opportunities)
 
 ---
 
@@ -127,6 +129,83 @@ GET https://publicapi.willhaben.at/jobs/v2/startpage
 ```
 
 Returns jobs-related start page data.
+
+---
+
+## Image CDN (`cache.willhaben.at`)
+
+> **No auth required.** All product images are publicly accessible.
+
+### URL Schema
+
+```
+https://cache.willhaben.at/mmo/{TYPE}/{P1}/{P2}/{P3}_{PHOTO_HASH}_{SIZE}.jpg
+```
+
+| Segment | Description | Example |
+|----------|-------------|----------|
+| `TYPE` | Single digit, category-dependent | `2` (boats), `6` (jolle), `9` (phones) |
+| `P1` | Ad ID part 1 (first 3 digits) | `145` |
+| `P2` | Ad ID part 2 (middle 3 digits) | `805` |
+| `P3` | Ad ID part 3 (last 3–4 digits) | `5532` |
+| `PHOTO_HASH` | Unique hash per photo | `-279127371`, `653278912` |
+| `SIZE` | Size variant suffix | `_hoved`, `_thumb`, `_n`, or empty |
+
+### Ad ID → Path Splitting
+
+The ad ID is split into 3 path segments:
+
+| Ad ID | Path Segments | Split Pattern |
+|--------|---------------|---------------|
+| `1458055532` (10 digits) | `145/805/5532` | 3+3+4 |
+| `928689246` (9 digits) | `928/689/246` | 3+3+3 |
+| `1946947409` (10 digits) | `194/694/7409` | 3+3+4 |
+
+### Size Variants
+
+| Suffix | Approx Size | Description |
+|--------|-------------|-------------|
+| *(none)* | ~552×1200 | Original / medium |
+| `_n` | ~552×1200 | Normal variant |
+| **`_hoved`** | **~942×1200** | **Main image (largest)** ⭐ |
+| `_thumb` | Thumbnail | Miniature |
+
+### Examples
+
+```
+# Boat image (TYPE=2, Ad ID 1458055532)
+https://cache.willhaben.at/mmo/2/145/805/5532_-279127371_hoved.jpg
+
+# Jolle image (TYPE=6, Ad ID 928689246)
+https://cache.willhaben.at/mmo/6/928/689/246_653278912_n_hoved.jpg
+
+# Phone image (TYPE=9, Ad ID 1946947409)
+https://cache.willhaben.at/mmo/9/194/694/7409_1935071140_hoved.jpg
+```
+
+### Extracting Image URLs
+
+Image URLs can be extracted from the listing HTML page:
+
+1. Fetch `https://www.willhaben.at/iad/object?adId={adId}` (follows 308 redirect to SEO URL)
+2. Parse `__NEXT_DATA__` JSON from `<script id="__NEXT_DATA__">` tag
+3. Regex extract all `cache.willhaben.at/mmo/...` URLs from the raw HTML
+4. Filter out `campaigns/`, `/img/delivery/`, `userProfile/` (UI icons, not product photos)
+5. Dedupe: each photo has 3 variants → keep only `_hoved` (largest)
+
+**Implemented in:** `whcli view {id} --images` (1 preview) or `--all-images` (all photos)
+
+### Downloading
+
+Images are publicly downloadable with a `Referer` header:
+
+```bash
+curl -sL --compressed "{image_url}" \
+  -H "Referer: https://www.willhaben.at/" \
+  -o "photo.jpg"
+```
+
+**Note:** Sequential downloads work reliably. Parallel downloads may fail (empty responses).
 
 ---
 

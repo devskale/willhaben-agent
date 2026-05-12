@@ -49,3 +49,9 @@ coverage/
 .cache/
 .opencode
 *.code-workspace
+
+# Downloaded images / media
+medien/
+*.jpg
+*.png
+!src/**/*.ts

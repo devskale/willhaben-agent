@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { checkAuth } from "./agents/auth.js";
-import { searchItems, getListingDetails, getSeller, getCategoryTree } from "./agents/search.js";
+import { searchItems, getListingDetails, getSeller, getCategoryTree, getListingImages } from "./agents/search.js";
 import { FALLBACK_LOCATIONS } from "./agents/locations.js";
 import {
   getStarredItems,
@@ -84,6 +84,9 @@ async function cmdSearch(positional: string[], flags: Record<string, string | bo
 
   const page = typeof flags.page === "string" ? parseInt(flags.page, 10) : 1;
   const category = typeof flags.category === "string" ? flags.category : undefined;
+  const sortBy = typeof flags.sort === "string" ? flags.sort : undefined; // price-asc, price-desc, newest
+  const privateOnly = flags.private === true;
+  const maxPrice = typeof flags["max-price"] === "string" ? parseFloat(flags["max-price"]) : undefined;
   
   // Parse location IDs (comma-separated)
   let areaIds: number[] | undefined;
@@ -97,11 +100,44 @@ async function cmdSearch(positional: string[], flags: Record<string, string | bo
   try {
     const result = await searchItems(query, category, page, areaIds);
 
+    // Apply client-side filters
+    let items = result.items;
+
+    // Price filter
+    if (maxPrice !== undefined && !isNaN(maxPrice)) {
+      items = items.filter((i) => i.price !== null && i.price <= maxPrice);
+    }
+
+    // Sorting
+    if (sortBy === "price-asc") {
+      items.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
+    } else if (sortBy === "price-desc") {
+      items.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
+    } else if (sortBy === "newest") {
+      items.sort((a, b) => (b.id || 0) - (a.id || 0)); // higher ID = newer on willhaben
+    }
+
+    // Private seller filter — needs detail lookup for each item
+    if (privateOnly && items.length > 0) {
+      const privateItems = [];
+      for (const item of items.slice(0, 20)) { // limit detail lookups to avoid rate limiting
+        try {
+          const detail = await getListingDetails(item.id);
+          const attrs = detail.attributes || {};
+          const isPrivate = attrs.ISPRIVATE?.[0] === "1" || attrs.DEALER?.[0] === "0";
+          if (isPrivate) {
+            privateItems.push({ ...item, _isPrivate: true });
+          }
+        } catch {
+          // Skip items that fail detail lookup
+        }
+      }
+      items = privateItems;
+    }
+
     // Record in history with result metadata
     try {
-      const prices = result.items
-        .map(i => i.price)
-        .filter((p): p is number => p !== null);
+      const prices = items.map(i => i.price).filter((p): p is number => p !== null);
       addSearchHistory(
         query,
         result.totalFound,
@@ -114,11 +150,49 @@ async function cmdSearch(positional: string[], flags: Record<string, string | bo
       // Ignore history errors
     }
 
-    output(result, format);
+    // Text format: pretty table output
+    if (format === "text") {
+      printSearchTable(query, result.totalFound, items, result.categories);
+      return;
+    }
+
+    output({ ...result, items }, format);
   } catch (e) {
     output({ error: e instanceof Error ? e.message : "Search failed" }, format);
     process.exit(1);
   }
+}
+
+function printSearchTable(query: string, totalFound: number, items: any[], categories: any[]) {
+  console.log(`\n🔍  "${query}"  —  ${totalFound.toLocaleString()} Treffer${items.length < totalFound ? ` (zeige ${items.length})` : ""}\n`);
+
+  if (categories.length > 0) {
+    console.log("📂 Kategorien:");
+    for (const c of categories.slice(0, 5)) {
+      console.log(`   ${c.id.toString().padStart(8)}   ${(c.count || 0).toLocaleString().padStart(8)}x   ${c.name}`);
+    }
+    console.log();
+  }
+
+  if (items.length === 0) {
+    console.log("   Keine Treffer gefunden.\n");
+    return;
+  }
+
+  console.log("┌──────────────┬──────────────────────────────────────────────────┬────────────┬─────────────────────┐");
+  console.log("│       Preis │ Titel                                             │       Ort  │         ID          │");
+  console.log("├──────────────┼──────────────────────────────────────────────────┼────────────┼─────────────────────┤");
+
+  for (const item of items) {
+    const price = (item.priceText || "?").padEnd(12);
+    const title = (item.title || "").substring(0, 50).padEnd(50);
+    const loc = (item.location || "?").substring(0, 19).padEnd(19);
+    const id = (item.id || "?").toString().padStart(17);
+    const privMark = item._isPrivate ? " 👤" : "";
+    console.log(`│${privMark} ${price} │ ${title} │ ${loc} │ ${id} │`);
+  }
+
+  console.log("└──────────────┴──────────────────────────────────────────────────┴────────────┴─────────────────────┘\n");
 }
 
 async function cmdView(positional: string[], flags: Record<string, string | boolean>, format: OutputFormat) {
@@ -126,6 +200,25 @@ async function cmdView(positional: string[], flags: Record<string, string | bool
   if (!adId) {
     output({ error: "Missing listing ID" }, format);
     process.exit(1);
+  }
+
+  // --images flag: return listing with image download URLs
+  if (flags.images === true || flags["all-images"] === true) {
+    try {
+      const result = await getListingImages(adId);
+      
+      // If not --all-images, keep only first image
+      if (flags["all-images"] !== true && result.images.length > 1) {
+        result.images = [result.images[0]];
+        result.imageCount = 1;
+      }
+      
+      output(result, format);
+      return;
+    } catch (e) {
+      output({ error: e instanceof Error ? e.message : "Failed to fetch images" }, format);
+      process.exit(1);
+    }
   }
 
   try {
