@@ -12,8 +12,18 @@ import puppeteer from 'puppeteer-core';
 const CDP_PORT = 9222;
 
 // Chrome paths - used when launching a new browser
-const CHROME_EXECUTABLE = process.env.CHROME_EXECUTABLE || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-const CHROME_USER_DATA = process.env.CHROME_USER_DATA || `${process.env.LOCALAPPDATA}\\Google\\Chrome\\User Data`;
+const isMac = process.platform === 'darwin';
+
+const CHROME_EXECUTABLE = process.env.CHROME_EXECUTABLE || (
+  isMac
+    ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+    : 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+);
+const CHROME_USER_DATA = process.env.CHROME_USER_DATA || (
+  isMac
+    ? `${process.env.HOME}/Library/Application Support/Google/Chrome`
+    : `${process.env.LOCALAPPDATA}\\Google\\Chrome\\User Data`
+);
 
 export interface CDPCookieOptions {
   /** URLs to get cookies for */
