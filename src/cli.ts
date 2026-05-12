@@ -11,6 +11,8 @@ import {
   addWishlist,
   removeWishlist,
   toggleWishlist,
+  seedCategories,
+  seedRegions,
 } from "./agents/db.js";
 import { sendMessage, getConversations, getMessages } from "./agents/messaging.js";
 
@@ -114,7 +116,7 @@ async function cmdSearch(positional: string[], flags: Record<string, string | bo
     } else if (sortBy === "price-desc") {
       items.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
     } else if (sortBy === "newest") {
-      items.sort((a, b) => (b.id || 0) - (a.id || 0)); // higher ID = newer on willhaben
+      items.sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0)); // higher ID = newer
     }
 
     // Private seller filter — needs detail lookup for each item
@@ -484,6 +486,10 @@ function cmdHelp(format: OutputFormat) {
 }
 
 async function main() {
+  // Seed reference data (idempotent — skips if already populated)
+  seedCategories();
+  seedRegions();
+
   const args = process.argv.slice(2);
   const { command, positional, flags } = parseArgs(args);
   const format = getFormat(flags);

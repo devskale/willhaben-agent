@@ -173,7 +173,6 @@ export const searchItems = async (
       }
 
       if (categoryGroup) {
-        // console.log("Found category group:", categoryGroup.id);
         // Handle both flat values and groupedPossibleValues
         if (categoryGroup.values) {
           categories = categoryGroup.values.map((val: any) => ({
@@ -182,7 +181,6 @@ export const searchItems = async (
             count: val.hits || 0,
           }));
         } else if (categoryGroup.groupedPossibleValues?.[0]?.possibleValues) {
-          // console.log("Found groupedPossibleValues:", categoryGroup.groupedPossibleValues[0].possibleValues.length);
           categories = categoryGroup.groupedPossibleValues[0].possibleValues
             .map((val: any) => ({
               id: val.urlParamRepresentationForValue?.find(
@@ -433,9 +431,8 @@ export const getListingImages = async (adId: string): Promise<ListingWithImages>
   });
   html = await resp.text();
 
-  // DEBUG
   if (!html.includes("__NEXT_DATA__")) {
-    throw new Error(`Missing __NEXT_DATA__. Status=${resp.status} URL=${resp.url} Len=${html.length} Body=${html.substring(0,200)}`);
+    throw new Error(`Failed to load listing ${adId}: page has no __NEXT_DATA__ (status=${resp.status})`);
   }
 
   const $ = load(html);

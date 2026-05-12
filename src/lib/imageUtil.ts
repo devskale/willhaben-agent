@@ -99,7 +99,7 @@ export async function downloadImage(
   filename?: string,
   options: ImageDownloaderOptions = {}
 ): Promise<ImageDownload | null> {
-  const results = await downloadImages([url], { ...options, prefix: filename || opts.prefix });
+  const results = await downloadImages([url], { ...options, prefix: filename || "img" });
   return results[0]?.size > 0 ? results[0] : null;
 }
 
