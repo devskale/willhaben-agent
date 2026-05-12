@@ -13,17 +13,25 @@ const CDP_PORT = 9222;
 
 // Chrome paths - used when launching a new browser
 const isMac = process.platform === 'darwin';
+const isWin = process.platform === 'win32';
+const isLinux = process.platform === 'linux';
 
+// Chrome paths - cross-platform
 const CHROME_EXECUTABLE = process.env.CHROME_EXECUTABLE || (
   isMac
     ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-    : 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+    : isWin
+      ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+      : '/usr/bin/google-chrome'
 );
 const CHROME_USER_DATA = process.env.CHROME_USER_DATA || (
   isMac
     ? `${process.env.HOME}/Library/Application Support/Google/Chrome`
-    : `${process.env.LOCALAPPDATA}\\Google\\Chrome\\User Data`
+    : isWin
+      ? `${process.env.LOCALAPPDATA}\\Google\\Chrome\\User Data`
+      : `${process.env.HOME}/.config/google-chrome`
 );
+const CHROME_PROFILE = process.env.CHROME_PROFILE || 'Default';
 
 export interface CDPCookieOptions {
   /** URLs to get cookies for */
@@ -84,8 +92,8 @@ export async function getCookiesViaCDP(options: CDPCookieOptions): Promise<{
       const tempProfileDir = mkdtempSync(join(tmpdir(), 'chrome-cdp-'));
 
       // Copy profile data to temp directory (cookies, Local State)
-      const defaultProfile = join(CHROME_USER_DATA, 'Default');
-      const tempDefaultProfile = join(tempProfileDir, 'Default');
+      const defaultProfile = join(CHROME_USER_DATA, CHROME_PROFILE);
+      const tempDefaultProfile = join(tempProfileDir, CHROME_PROFILE);
 
       if (existsSync(defaultProfile)) {
         mkdirSync(tempDefaultProfile, { recursive: true });

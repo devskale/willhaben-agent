@@ -2,6 +2,7 @@ import { getCookies, toCookieHeader } from "@steipete/sweet-cookie";
 import { getCookiesViaCDP, toCookieHeader as toCDPCookieHeader } from "../lib/cdpCookies.js";
 
 const isMac = process.platform === 'darwin';
+const isWin = process.platform === 'win32';
 
 export interface AuthState {
   isAuthenticated: boolean;
@@ -18,12 +19,14 @@ export interface AuthState {
 
 export const checkAuth = async (useCDP = false): Promise<AuthState> => {
   try {
-    // Use Chrome Beta - cookies are stored in a different profile path
-    // Chrome Beta on Windows: %LOCALAPPDATA%\Google\Chrome Beta\User Data\Default\Network\Cookies
+    // Chrome profile path - cross-platform
     const localAppData = process.env.LOCALAPPDATA || '';
-    const chromeBetaProfile = isMac
-      ? `${process.env.HOME}/Library/Application Support/Google/Chrome/Default`
-      : `${localAppData}/Google/Chrome/User Data/Default`;
+    const chromeProfile = process.env.CHROME_PROFILE || 'Default';
+    const chromeProfilePath = isMac
+      ? `${process.env.HOME}/Library/Application Support/Google/Chrome/${chromeProfile}`
+      : isWin
+        ? `${localAppData}\\Google\\Chrome\\User Data\\${chromeProfile}`
+        : `${process.env.HOME}/.config/google-chrome/${chromeProfile}`;
 
     let cookieHeader: string;
 
@@ -52,7 +55,7 @@ export const checkAuth = async (useCDP = false): Promise<AuthState> => {
       const { cookies, warnings } = await getCookies({
         url: "https://www.willhaben.at",
         browsers: ["chrome"],
-        chromeProfile: chromeBetaProfile,
+        chromeProfile: chromeProfilePath,
       });
 
       if (cookies.length === 0) {
