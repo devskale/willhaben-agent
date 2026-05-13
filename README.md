@@ -1,98 +1,74 @@
-# whcli - Willhaben.at CLI
+# whcli — Willhaben.at CLI
 
-A JSON-first command-line interface for [willhaben.at](https://www.willhaben.at), designed for agent automation.
+JSON-first CLI for [willhaben.at](https://www.willhaben.at), built for agent automation.
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue?logo=typescript)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-18+-green?logo=node.js)](https://nodejs.org)
-
-## Features
-
-- **JSON Output**: All commands output JSON by default for easy agent consumption
-- **Category Tree Navigation**: Browse nested category hierarchy
-- **Location Filtering**: Filter results by Austrian states
-- **Listing Details**: Get full listing info including seller, price, attributes
-- **Favorites**: Manage starred items in local SQLite database
-- **History**: Track search history
-
-## Installation
+## Quick Start
 
 ```bash
-npm install
-```
-
-## Usage
-
-```bash
-npm start -- <command> [options]
+pnpm install
+pnpm start -- search "iphone 15"
 ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `tree [id]` | Browse category tree (optional: drill into category ID) |
-| `search <query>` | Search listings |
+| `search <query>` | Search listings (supports filters, sort, text output) |
 | `view <adId>` | Get listing details |
+| `view <adId> --images` | Get 1 preview image URL |
+| `view <adId> --all-images` | Get all image URLs |
 | `seller <userId>` | Get seller info |
-| `locations` | List Austrian states for location filtering |
+| `auth` | Check authentication status |
+| `tree [id]` | Browse category tree |
+| `wishlist list` | Show search wishlist |
+| `locations` | List Austrian states |
 | `favorites list` | List starred items |
 | `history` | Show search history |
-| `auth` | Check authentication status |
-| `help` | Show usage |
 
-## Flags
+## Search Flags
 
 | Flag | Description |
 |------|-------------|
-| `--category <id>` | Filter by category |
-| `--location <ids>` | Filter by state IDs (comma-separated) |
-| `--keyword <q>` | Filter category tree by keyword |
+| `--category <id>` | Filter by category ID |
+| `--location <ids>` | Comma-separated area IDs (e.g., `900,1,3`) |
 | `--page <n>` | Page number |
-| `--json` | Output as JSON (default) |
+| `--sort <mode>` | `price-asc`, `price-desc`, `newest` |
+| `--max-price <amount>` | Client-side max price filter |
+| `--private` | Filter private sellers only |
+| `--text` | Pretty table output |
+| `--json` | JSON output (default) |
 
 ## Examples
 
 ```bash
-# Browse category tree
-whcli tree
-whcli tree 2691                     # Smartphones / Telefonie
-whcli tree 2722 --keyword pixel     # Smartphones filtered by "pixel"
-
 # Search with filters
-whcli search "pixel" --category 5014404 --location 900,1,3
-# Search Pixel 7 in Vienna, Burgenland, Niederösterreich
+whcli search "pixel" --category 2722 --sort price-asc --max-price 200 --text
 
-# Get listing details
-whcli view 12345678
+# Only private sellers
+whcli search "boot kabine" --category 5007823 --private --sort price-asc --text
 
-# Check authentication
-whcli auth
+# View images
+whcli view 1909835075 --images          # 1 preview
+whcli view 1909835075 --all-images      # all photos
+
+# Category browsing
+whcli tree                              # Root categories
+whcli tree 2691                         # Smartphones/Telefonie
+whcli tree 2691 --keyword pixel         # Filtered
+
+# Location + category combo
+whcli search "pixel" --location 900 --category 2722
 ```
 
-## Location IDs
+## Auth
 
-| ID | State |
-|----|-------|
-| 1 | Burgenland |
-| 2 | Kärnten |
-| 3 | Niederösterreich |
-| 4 | Oberösterreich |
-| 5 | Salzburg |
-| 6 | Steiermark |
-| 7 | Tirol |
-| 8 | Vorarlberg |
-| 900 | Wien |
+Uses browser cookies via [`sweet-cookie`](https://github.com/nicedoc/sweet-cookie). Supports Chrome, Edge, Firefox, Safari.
 
-## Authentication
-
-Uses browser cookies via `sweet-cookie` to authenticate with willhaben.at. Supports Chrome, Edge, Firefox, and Safari.
+Set `CHROME_PROFILE` env var to pick a Chrome profile (default: `Default`).
 
 ## Tech Stack
 
-- **TypeScript** for type safety
-- **better-sqlite3** for local storage
-- **sweet-cookie** for authentication
-- **cheerio** for HTML parsing
+TypeScript · better-sqlite3 · sweet-cookie · cheerio
 
 ## License
 

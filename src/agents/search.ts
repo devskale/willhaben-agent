@@ -9,6 +9,12 @@ import {
   CategoryTree,
   CategoryNode,
 } from "../types.js";
+import {
+  parsePrice,
+  parseEstateSize,
+  parseRooms,
+  computePricePerSqm,
+} from "../lib/price.js";
 
 const WH_CLIENT = "api@willhaben.at;responsive_web;server;1.0.0;desktop";
 const UA =
@@ -101,6 +107,11 @@ const parseListing = (item: any): Listing => {
     publishedAt: undefined, // Date parsing omitted for brevity
     condition: attributes["CONDITION"]?.[0] || "",
     paylivery: !!attributes["PAYLIVERY"],
+    estateSize: null,
+    rooms: null,
+    floor: null,
+    propertyType: null,
+    pricePerSqm: null,
   };
 };
 
@@ -131,16 +142,114 @@ const parseApiAttributes = (item: ApiItem): Record<string, string> => {
  * Fetch items via JSON Search API (visitor cookies, no login needed).
  * Returns a map of adId → enriched Listing data.
  */
-const VERTICAL_CATEGORIES: Record<string, { vertical: number; category: string; htmlPath: string }> = {
+const VERTICAL_CATEGORIES: Record<string, { vertical: number; category: string; htmlPath: string; searchId?: number }> = {
   marktplatz: { vertical: 5, category: "301", htmlPath: "kaufen-und-verkaufen/marktplatz" },
-  immobilien: { vertical: 2, category: "101", htmlPath: "immobilien/eigentumswohnung/eigentumswohnung-angebote" },
+  immobilien: { vertical: 2, category: "100", htmlPath: "immobilien", searchId: 90 },
+  wohnungen: { vertical: 2, category: "101", htmlPath: "immobilien/eigentumswohnung/eigentumswohnung-angebote" },
+  hauser: { vertical: 2, category: "102", htmlPath: "immobilien/haus/haus-angebote" },
   auto: { vertical: 3, category: "101", htmlPath: "auto/motorwagen" },
 };
 
 type VerticalKey = keyof typeof VERTICAL_CATEGORIES;
 
-const resolveVertical = (v?: string): { vertical: number; category: string; htmlPath: string } =>
+const resolveVertical = (v?: string): { vertical: number; category: string; htmlPath: string; searchId?: number } =>
   VERTICAL_CATEGORIES[(v || "marktplatz") as VerticalKey] || VERTICAL_CATEGORIES.marktplatz;
+
+/**
+ * Search immobilien via /webapi/iad/search/atz/2/{searchId}?areaId=...
+ * This is a completely different API from Marktplatz — different endpoint,
+ * different attribute names (ESTATE_SIZE/LIVING_AREA, NUMBER_OF_ROOMS vs ROOMS,
+ * ESTATE_PRICE/PRICE_SUGGESTION vs PRICE). Uses searchId not vertical/category.
+ */
+const searchImmoApi = async (
+  searchId: number,
+  areaIds?: number[],
+  rows: number = 30,
+): Promise<{ items: Map<string, Partial<Listing>>; totalFound: number }> => {
+  try {
+    const { csrfToken, cookieHeader } = await getVisitorCookies();
+
+    const params = new URLSearchParams({
+      rows: String(rows),
+      isNavigation: "true",
+      page: "1",
+    });
+    if (areaIds?.length) {
+      for (const aid of areaIds) {
+        params.append("areaId", String(aid));
+      }
+    }
+
+    const url = `https://www.willhaben.at/webapi/iad/search/atz/2/${searchId}?${params}`;
+
+    const resp = await fetch(url, {
+      headers: {
+        "User-Agent": UA,
+        Accept: "application/json",
+        "x-bbx-csrf-token": csrfToken,
+        "x-wh-client": WH_CLIENT,
+        Referer: "https://www.willhaben.at/iad/immobilien",
+        Cookie: cookieHeader,
+      },
+    });
+
+    if (!resp.ok) return { items: new Map(), totalFound: 0 };
+
+    const data = await resp.json() as { advertSummary?: ApiItem[]; advertSummaryList?: { advertSummary?: ApiItem[] }; rowsFound?: number };
+    const items = data.advertSummary || data.advertSummaryList?.advertSummary || [];
+    const result = new Map<string, Partial<Listing>>();
+
+    for (const item of items) {
+      const a = parseApiAttributes(item);
+
+      // Immobiliens uses ESTATE_PRICE/PRICE_SUGGESTION (not PRICE)
+      const rawPrice = a["PRICE"] || a["ESTATE_PRICE/PRICE_SUGGESTION"] || a["PRICE_FOR_DISPLAY"];
+      const price = parsePrice(rawPrice);
+      const oldPrice = parsePrice(a["OLD_PRICE"] || a["OLD_PRICE_FOR_DISPLAY"]);
+      const isPrivate = a["ISPRIVATE"] === "1";
+      const imageUrl = item.advertImageList?.advertImage?.[0]?.mainImageUrl;
+
+      // Immobiliens uses ESTATE_SIZE/LIVING_AREA or PLOT/AREA (not plain ESTATE_SIZE)
+      const rawSize = a["ESTATE_SIZE"] || a["ESTATE_SIZE/LIVING_AREA"] || a["PLOT/AREA"];
+      const estateSize = parseEstateSize(rawSize);
+
+      // Immobiliens uses NUMBER_OF_ROOMS (e.g. "7") not ROOMS (e.g. "3X3")")
+      const rawRooms = a["NUMBER_OF_ROOMS"] || a["ROOMS"];
+      const rooms = parseRooms(rawRooms);
+
+      const floor = a["FLOOR"] || undefined;
+      const propertyType = a["PROPERTY_TYPE"] || undefined;
+      const pricePerSqm = computePricePerSqm(price, estateSize);
+
+      result.set(String(item.id), {
+        id: String(item.id),
+        title: typeof item.description === 'string' ? item.description : '',
+        price,
+        priceText: a["PRICE_FOR_DISPLAY"] || (price !== null ? `€ ${price}` : ""),
+        oldPrice,
+        oldPriceText: a["OLD_PRICE_FOR_DISPLAY"] || (oldPrice !== null ? `€ ${oldPrice}` : undefined),
+        isPrivate,
+        coordinates: a["COORDINATES"],
+        imageUrl,
+        location: [a["POSTCODE"], a["LOCATION"]].filter(Boolean).join(", "),
+        sellerId: a["ORGID"],
+        sellerName: a["ORGNAME"] || a["CONTACT/NAME"] || "",
+        paylivery: a["p2penabled"] === "true",
+        publishedAt: a["PUBLISHED_String"],
+        condition: a["CONDITION"] || "",
+        estateSize,
+        rooms,
+        floor,
+        propertyType,
+        pricePerSqm,
+      });
+    }
+
+    return { items: result, totalFound: (typeof data.rowsFound === 'number' ? data.rowsFound : items.length) };
+  } catch {
+    return { items: new Map(), totalFound: 0 };
+  }
+};
 
 const searchItemsApi = async (
   keyword: string,
@@ -180,24 +289,25 @@ const searchItemsApi = async (
       return new Map(); // Graceful fallback — HTML results still work
     }
 
-    const data = await resp.json() as { advertSummary?: ApiItem[] };
-    const items = data.advertSummary || [];
+    const data = await resp.json() as { advertSummary?: ApiItem[]; advertSummaryList?: { advertSummary?: ApiItem[] }; rowsFound?: number };
+    const items = data.advertSummary || data.advertSummaryList?.advertSummary || [];
     const result = new Map<string, Partial<Listing>>();
 
     for (const item of items) {
       const a = parseApiAttributes(item);
 
-      const price = a["PRICE"] ? parseFloat(a["PRICE"]) : null;
-      const oldPrice = a["OLD_PRICE"] ? parseFloat(a["OLD_PRICE"]) : null;
+      // Price — use robust parser (handles "ab €", dots as thousands sep)
+      const price = parsePrice(a["PRICE"] || a["PRICE_FOR_DISPLAY"]);
+      const oldPrice = parsePrice(a["OLD_PRICE"] || a["OLD_PRICE_FOR_DISPLAY"]);
       const isPrivate = a["ISPRIVATE"] === "1";
       const imageUrl = item.advertImageList?.advertImage?.[0]?.mainImageUrl;
 
-      // Immobilien-specific
-      const estateSize = a["ESTATE_SIZE"] ? parseFloat(a["ESTATE_SIZE"]) : undefined;
-      const rooms = a["ROOMS"]?.split("X")[0]; // "3X3" → "3"
-      const floor = a["FLOOR"];
-      const propertyType = a["PROPERTY_TYPE"];
-      const pricePerSqm = price && estateSize ? Math.round(price / estateSize) : undefined;
+      // Immobilien-specific — robust parsing
+      const estateSize = parseEstateSize(a["ESTATE_SIZE"]);
+      const rooms = parseRooms(a["ROOMS"]);
+      const floor = a["FLOOR"] || undefined;
+      const propertyType = a["PROPERTY_TYPE"] || undefined;
+      const pricePerSqm = computePricePerSqm(price, estateSize);
 
       result.set(String(item.id), {
         id: String(item.id),
@@ -249,6 +359,41 @@ export const searchItems = async (
     for (const areaId of areaIds) {
       url += `&areaId=${areaId}`;
     }
+  }
+
+  // Immobilien uses a completely different API — skip HTML scrape, use dedicated endpoint
+  if ("searchId" in vc && vc.searchId) {
+    const { items: apiData, totalFound: immoTotal } = await searchImmoApi(Number(vc.searchId), areaIds);
+    const items: Listing[] = [];
+    for (const [, apiItem] of apiData) {
+      if (apiItem.id) {
+        items.push({
+          id: apiItem.id,
+          title: apiItem.title || "",
+          price: apiItem.price ?? null,
+          priceText: apiItem.priceText || "",
+          oldPrice: apiItem.oldPrice ?? null,
+          oldPriceText: apiItem.oldPriceText,
+          location: apiItem.location || "",
+          description: "",
+          url: `${BASE_URL}/iad/object?adId=${apiItem.id}`,
+          imageUrl: apiItem.imageUrl,
+          isPrivate: apiItem.isPrivate,
+          coordinates: apiItem.coordinates,
+          sellerId: apiItem.sellerId,
+          sellerName: apiItem.sellerName || "",
+          publishedAt: apiItem.publishedAt,
+          condition: apiItem.condition || "",
+          paylivery: apiItem.paylivery ?? false,
+          estateSize: apiItem.estateSize ?? null,
+          rooms: apiItem.rooms ?? null,
+          floor: apiItem.floor ?? null,
+          propertyType: apiItem.propertyType ?? null,
+          pricePerSqm: apiItem.pricePerSqm ?? null,
+        });
+      }
+    }
+    return { items, totalFound: immoTotal, categories: [] };
   }
 
   try {
@@ -309,11 +454,11 @@ export const searchItems = async (
           publishedAt: apiItem.publishedAt,
           condition: apiItem.condition || "",
           paylivery: apiItem.paylivery ?? false,
-          estateSize: apiItem.estateSize,
-          rooms: apiItem.rooms,
-          floor: apiItem.floor,
-          propertyType: apiItem.propertyType,
-          pricePerSqm: apiItem.pricePerSqm,
+          estateSize: apiItem.estateSize ?? null,
+          rooms: apiItem.rooms ?? null,
+          floor: apiItem.floor ?? null,
+          propertyType: apiItem.propertyType ?? null,
+          pricePerSqm: apiItem.pricePerSqm ?? null,
         });
         seen.add(apiItem.id!);
       }

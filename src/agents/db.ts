@@ -177,6 +177,11 @@ export function getStarredItems(): StarredItem[] {
     sellerName: row.seller_name,
     paylivery: Boolean(row.paylivery),
     starredAt: row.created_at,
+    estateSize: row.estate_size ?? null,
+    rooms: row.rooms ?? null,
+    floor: row.floor ?? null,
+    propertyType: row.property_type ?? null,
+    pricePerSqm: row.price_per_sqm ?? null,
   }));
 }
 

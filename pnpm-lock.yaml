@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@norbulcz/num-parse':
+        specifier: ^0.1.0
+        version: 0.1.0
       '@steipete/sweet-cookie':
         specifier: ^0.2.0
         version: 0.2.0
@@ -267,6 +270,10 @@ packages:
   '@nodelib/fs.walk@1.2.8':
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
+
+  '@norbulcz/num-parse@0.1.0':
+    resolution: {integrity: sha512-90JKcNPygp6lkYOBbJH9BFA72OVINqXDEmyzNmvT1JO9KGNjvs3myydcnE45Qh0UbLMYxE6iIbAL6mVRnkut2g==}
+    engines: {node: '>=18'}
 
   '@oxc-project/types@0.129.0':
     resolution: {integrity: sha512-3oz8m3FGdr2nDXVqmFUw7jolKliC4MoyXYIG2c7gpjBnzUWQpUGIYcXYKxTdTi+N2jusvt610ckTMkxdwHkYEg==}
@@ -1764,6 +1771,8 @@ snapshots:
     dependencies:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.1
+
+  '@norbulcz/num-parse@0.1.0': {}
 
   '@oxc-project/types@0.129.0': {}
 
