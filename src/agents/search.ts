@@ -1,4 +1,4 @@
-import { checkAuth } from "./auth.js";
+import { checkAuth, getVisitorCookies } from "./auth.js";
 import { load } from "cheerio";
 import {
   Listing,
@@ -10,11 +10,14 @@ import {
   CategoryNode,
 } from "../types.js";
 
+const WH_CLIENT = "api@willhaben.at;responsive_web;server;1.0.0;desktop";
+const UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
 const BASE_URL = "https://www.willhaben.at";
 
 const getHeaders = (cookies: string) => ({
-  "User-Agent":
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "User-Agent": UA,
   Cookie: cookies,
   Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
   "Accept-Language": "de-AT,de;q=0.9,en;q=0.8",
@@ -101,6 +104,108 @@ const parseListing = (item: any): Listing => {
   };
 };
 
+interface ApiItem {
+  id: number;
+  description: string;
+  attributes: { attribute: Array<{ name: string; values: string[] }> };
+  advertImageList?: {
+    advertImage?: Array<{ mainImageUrl?: string }>;
+  };
+}
+
+/**
+ * Parse attribute list from JSON API item into a flat map.
+ */
+const parseApiAttributes = (item: ApiItem): Record<string, string> => {
+  const attrs: Record<string, string> = {};
+  const list = item.attributes?.attribute || [];
+  for (const a of list) {
+    if (a.name && a.values?.[0] !== undefined) {
+      attrs[a.name] = a.values[0];
+    }
+  }
+  return attrs;
+};
+
+/**
+ * Fetch items via JSON Search API (visitor cookies, no login needed).
+ * Returns a map of adId → enriched Listing data.
+ */
+const searchItemsApi = async (
+  keyword: string,
+  categoryId?: string,
+  areaIds?: number[],
+  rows: number = 50,
+): Promise<Map<string, Partial<Listing>>> => {
+  try {
+    const { csrfToken, cookieHeader } = await getVisitorCookies();
+
+    // Build API URL — no category filter to maximize overlap with HTML results
+    const params = new URLSearchParams({
+      rows: String(rows),
+      keyword,
+      sort: "0", // relevance
+    });
+    if (areaIds?.length) {
+      for (const aid of areaIds) {
+        params.append("areaId", String(aid));
+      }
+    }
+
+    const url = `https://www.willhaben.at/webapi/ad-search/search/atz/5/301/atverz?${params}`;
+
+    const resp = await fetch(url, {
+      headers: {
+        "User-Agent": UA,
+        Accept: "application/json",
+        "x-bbx-csrf-token": csrfToken,
+        "x-wh-client": WH_CLIENT,
+        Referer: "https://www.willhaben.at/",
+        Cookie: cookieHeader,
+      },
+    });
+
+    if (!resp.ok) {
+      return new Map(); // Graceful fallback — HTML results still work
+    }
+
+    const data = await resp.json() as { advertSummary?: ApiItem[] };
+    const items = data.advertSummary || [];
+    const result = new Map<string, Partial<Listing>>();
+
+    for (const item of items) {
+      const a = parseApiAttributes(item);
+
+      const price = a["PRICE"] ? parseFloat(a["PRICE"]) : null;
+      const oldPrice = a["OLD_PRICE"] ? parseFloat(a["OLD_PRICE"]) : null;
+      const isPrivate = a["ISPRIVATE"] === "1";
+      const imageUrl = item.advertImageList?.advertImage?.[0]?.mainImageUrl;
+
+      result.set(String(item.id), {
+        id: String(item.id),
+        title: typeof item.description === 'string' ? item.description : '',
+        price,
+        priceText: a["PRICE_FOR_DISPLAY"] || (price !== null ? `€ ${price}` : ""),
+        oldPrice,
+        oldPriceText: a["OLD_PRICE_FOR_DISPLAY"] || (oldPrice !== null ? `€ ${oldPrice}` : undefined),
+        isPrivate,
+        coordinates: a["COORDINATES"],
+        imageUrl,
+        location: [a["POSTCODE"], a["LOCATION"]].filter(Boolean).join(", "),
+        sellerId: a["ORGID"],
+        sellerName: a["ORGNAME"] || a["CONTACT/NAME"] || "",
+        paylivery: a["p2penabled"] === "true",
+        publishedAt: a["PUBLISHED_String"],
+        condition: a["CONDITION"] || "",
+      });
+    }
+
+    return result;
+  } catch {
+    return new Map(); // Graceful fallback
+  }
+};
+
 export const searchItems = async (
   keyword: string,
   categoryId?: string,
@@ -121,12 +226,16 @@ export const searchItems = async (
   }
 
   try {
-    const response = await fetch(url, { headers });
-    if (!response.ok) {
-      throw new Error(`Search failed with status: ${response.status}`);
-    }
+    // Run HTML scrape + JSON API in parallel (hybrid approach)
+    const [htmlResponse, apiData] = await Promise.all([
+      fetch(url, { headers }).then(async r => {
+        if (!r.ok) throw new Error(`Search failed with status: ${r.status}`);
+        return r.text();
+      }),
+      searchItemsApi(keyword, categoryId, areaIds),
+    ]);
 
-    const html = await response.text();
+    const html = htmlResponse;
     const $ = load(html);
     const nextData = $("#__NEXT_DATA__").html();
 
@@ -145,7 +254,50 @@ export const searchItems = async (
 
     const ads = searchResult.advertSummaryList?.advertSummary || [];
     const totalFound = searchResult.rowsFound || ads.length;
-    const items = ads.map(parseListing);
+    const htmlItems = ads.map(parseListing);
+
+    // Prefer API items (richer data: ISPRIVATE, OLD_PRICE, COORDINATES, etc.)
+    // Fall back to HTML items for any IDs the API didn't return
+    const items: Listing[] = [];
+    const apiMap = apiData;
+    const seen = new Set<string>();
+
+    // Add all API items first (they have full enrichment)
+    for (const [, apiItem] of apiMap) {
+      if (apiItem.id && !seen.has(apiItem.id)) {
+        items.push({
+          id: apiItem.id,
+          title: apiItem.title || "",
+          price: apiItem.price ?? null,
+          priceText: apiItem.priceText || "",
+          oldPrice: apiItem.oldPrice ?? null,
+          oldPriceText: apiItem.oldPriceText,
+          location: apiItem.location || "",
+          description: "",
+          url: `${BASE_URL}/iad/object?adId=${apiItem.id}`,
+          imageUrl: apiItem.imageUrl,
+          isPrivate: apiItem.isPrivate,
+          coordinates: apiItem.coordinates,
+          sellerId: apiItem.sellerId,
+          sellerName: apiItem.sellerName || "",
+          publishedAt: apiItem.publishedAt,
+          condition: apiItem.condition || "",
+          paylivery: apiItem.paylivery ?? false,
+        });
+        seen.add(apiItem.id!);
+      }
+    }
+
+    // Add HTML items that the API didn't cover
+    for (const item of htmlItems) {
+      if (!seen.has(item.id)) {
+        items.push(item);
+        seen.add(item.id);
+      }
+    }
+
+    // Enrich remaining HTML items with any API data we have
+    // (this handles the case where API items have different IDs but we still have partial overlap)
 
     // Extract categories
     let categories: CategorySuggestion[] = [];

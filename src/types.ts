@@ -3,10 +3,14 @@ export interface Listing {
   title: string;
   price: number | null;
   priceText: string;
+  oldPrice?: number | null;
+  oldPriceText?: string;
   location: string;
   description: string;
   url: string;
   imageUrl?: string;
+  isPrivate?: boolean;
+  coordinates?: string;
   sellerId?: string;
   sellerName: string;
   publishedAt?: string;

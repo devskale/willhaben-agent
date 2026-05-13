@@ -1,6 +1,47 @@
 import { getCookies, toCookieHeader } from "@steipete/sweet-cookie";
 import { getCookiesViaCDP, toCookieHeader as toCDPCookieHeader } from "../lib/cdpCookies.js";
 
+export interface VisitorCookies {
+  csrfToken: string;
+  cookieHeader: string;
+}
+
+/**
+ * Get anonymous visitor cookies from willhaben.at.
+ * No login required — just a GET request to the homepage.
+ * Returns CSRF token + cookie header for JSON API calls.
+ */
+export const getVisitorCookies = async (): Promise<VisitorCookies> => {
+  const resp = await fetch("https://www.willhaben.at/", {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    },
+    redirect: "follow",
+  });
+
+  const setCookies = resp.headers.getSetCookie();
+  const cookies: string[] = [];
+  let csrfToken = "";
+
+  for (const sc of setCookies) {
+    const parts = sc.split(";")[0]; // "name=value"
+    cookies.push(parts);
+    if (parts.startsWith("x-bbx-csrf-token=")) {
+      csrfToken = parts.split("=")[1];
+    }
+  }
+
+  if (!csrfToken) {
+    throw new Error("Failed to obtain CSRF token from visitor cookies");
+  }
+
+  return {
+    csrfToken,
+    cookieHeader: cookies.join("; "),
+  };
+};
+
 const isMac = process.platform === 'darwin';
 const isWin = process.platform === 'win32';
 

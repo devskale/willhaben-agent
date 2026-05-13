@@ -119,22 +119,31 @@ async function cmdSearch(positional: string[], flags: Record<string, string | bo
       items.sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0)); // higher ID = newer
     }
 
-    // Private seller filter — needs detail lookup for each item
+    // Private seller filter — now uses isPrivate from JSON API enrichment
     if (privateOnly && items.length > 0) {
-      const privateItems = [];
-      for (const item of items.slice(0, 20)) { // limit detail lookups to avoid rate limiting
-        try {
-          const detail = await getListingDetails(item.id);
-          const attrs = detail.attributes || {};
-          const isPrivate = attrs.ISPRIVATE?.[0] === "1" || attrs.DEALER?.[0] === "0";
-          if (isPrivate) {
-            privateItems.push({ ...item, _isPrivate: true });
+      // Check if items have isPrivate from API enrichment
+      const hasApiData = items.some(i => i.isPrivate !== undefined);
+      
+      if (hasApiData) {
+        // Fast path: use pre-fetched isPrivate flag
+        items = items.filter(i => i.isPrivate === true);
+      } else {
+        // Fallback: detail lookup (slow, rate-limited)
+        const privateItems = [];
+        for (const item of items.slice(0, 20)) {
+          try {
+            const detail = await getListingDetails(item.id);
+            const attrs = detail.attributes || {};
+            const isPrivate = attrs.ISPRIVATE?.[0] === "1" || attrs.DEALER?.[0] === "0";
+            if (isPrivate) {
+              privateItems.push({ ...item, _isPrivate: true });
+            }
+          } catch {
+            // Skip items that fail detail lookup
           }
-        } catch {
-          // Skip items that fail detail lookup
         }
+        items = privateItems;
       }
-      items = privateItems;
     }
 
     // Record in history with result metadata
@@ -181,20 +190,15 @@ function printSearchTable(query: string, totalFound: number, items: any[], categ
     return;
   }
 
-  console.log("┌──────────────┬──────────────────────────────────────────────────┬────────────┬─────────────────────┐");
-  console.log("│       Preis │ Titel                                             │       Ort  │         ID          │");
-  console.log("├──────────────┼──────────────────────────────────────────────────┼────────────┼─────────────────────┤");
-
   for (const item of items) {
-    const price = (item.priceText || "?").padEnd(12);
-    const title = (item.title || "").substring(0, 50).padEnd(50);
-    const loc = (item.location || "?").substring(0, 19).padEnd(19);
-    const id = (item.id || "?").toString().padStart(17);
-    const privMark = item._isPrivate ? " 👤" : "";
-    console.log(`│${privMark} ${price} │ ${title} │ ${loc} │ ${id} │`);
+    const priv = item.isPrivate ? "👤" : "🏢";
+    const price = item.priceText || "?";
+    const oldPrice = item.oldPriceText ? ` ~~${item.oldPriceText}~~` : "";
+    const title = (item.title || "").substring(0, 55);
+    const loc = (item.location || "?").substring(0, 30);
+    console.log(`  ${priv} ${price.padEnd(10)}${oldPrice.padEnd(14)}  ${title.padEnd(55)}  ${loc}`);
   }
-
-  console.log("└──────────────┴──────────────────────────────────────────────────┴────────────┴─────────────────────┘\n");
+  console.log();
 }
 
 async function cmdView(positional: string[], flags: Record<string, string | boolean>, format: OutputFormat) {
