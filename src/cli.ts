@@ -99,8 +99,9 @@ async function cmdSearch(positional: string[], flags: Record<string, string | bo
       .filter((n) => !isNaN(n));
   }
 
+  const vertical = typeof flags.vertical === "string" ? flags.vertical : undefined;
   try {
-    const result = await searchItems(query, category, page, areaIds);
+    const result = await searchItems(query, category, page, areaIds, vertical);
 
     // Apply client-side filters
     let items = result.items;
@@ -196,7 +197,13 @@ function printSearchTable(query: string, totalFound: number, items: any[], categ
     const oldPrice = item.oldPriceText ? ` ~~${item.oldPriceText}~~` : "";
     const title = (item.title || "").substring(0, 55);
     const loc = (item.location || "?").substring(0, 30);
-    console.log(`  ${priv} ${price.padEnd(10)}${oldPrice.padEnd(14)}  ${title.padEnd(55)}  ${loc}`);
+    // Immobilien extras
+    const size = item.estateSize ? `${item.estateSize}m²` : "";
+    const rooms = item.rooms ? `${item.rooms}Zi` : "";
+    const ppsm = item.pricePerSqm ? `€${item.pricePerSqm}/m²` : "";
+    const immo = [size, rooms, ppsm].filter(Boolean).join(" ");
+    const immoPad = immo ? `  ${immo}` : "";
+    console.log(`  ${priv} ${price.padEnd(10)}${oldPrice.padEnd(14)}  ${title.padEnd(55)}${immoPad}  ${loc}`);
   }
   console.log();
 }

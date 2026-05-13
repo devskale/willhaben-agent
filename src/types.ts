@@ -11,6 +11,12 @@ export interface Listing {
   imageUrl?: string;
   isPrivate?: boolean;
   coordinates?: string;
+  // Immobilien fields
+  estateSize?: number;
+  rooms?: string;
+  floor?: string;
+  propertyType?: string;
+  pricePerSqm?: number;
   sellerId?: string;
   sellerName: string;
   publishedAt?: string;

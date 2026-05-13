@@ -131,20 +131,31 @@ const parseApiAttributes = (item: ApiItem): Record<string, string> => {
  * Fetch items via JSON Search API (visitor cookies, no login needed).
  * Returns a map of adId → enriched Listing data.
  */
+const VERTICAL_CATEGORIES: Record<string, { vertical: number; category: string; htmlPath: string }> = {
+  marktplatz: { vertical: 5, category: "301", htmlPath: "kaufen-und-verkaufen/marktplatz" },
+  immobilien: { vertical: 2, category: "101", htmlPath: "immobilien/eigentumswohnung/eigentumswohnung-angebote" },
+  auto: { vertical: 3, category: "101", htmlPath: "auto/motorwagen" },
+};
+
+type VerticalKey = keyof typeof VERTICAL_CATEGORIES;
+
+const resolveVertical = (v?: string): { vertical: number; category: string; htmlPath: string } =>
+  VERTICAL_CATEGORIES[(v || "marktplatz") as VerticalKey] || VERTICAL_CATEGORIES.marktplatz;
+
 const searchItemsApi = async (
   keyword: string,
-  categoryId?: string,
+  vertical: number,
+  apiCategory: string,
   areaIds?: number[],
   rows: number = 50,
 ): Promise<Map<string, Partial<Listing>>> => {
   try {
     const { csrfToken, cookieHeader } = await getVisitorCookies();
 
-    // Build API URL — no category filter to maximize overlap with HTML results
     const params = new URLSearchParams({
       rows: String(rows),
       keyword,
-      sort: "0", // relevance
+      sort: "0",
     });
     if (areaIds?.length) {
       for (const aid of areaIds) {
@@ -152,7 +163,7 @@ const searchItemsApi = async (
       }
     }
 
-    const url = `https://www.willhaben.at/webapi/ad-search/search/atz/5/301/atverz?${params}`;
+    const url = `https://www.willhaben.at/webapi/ad-search/search/atz/${vertical}/${apiCategory}/atverz?${params}`;
 
     const resp = await fetch(url, {
       headers: {
@@ -181,6 +192,13 @@ const searchItemsApi = async (
       const isPrivate = a["ISPRIVATE"] === "1";
       const imageUrl = item.advertImageList?.advertImage?.[0]?.mainImageUrl;
 
+      // Immobilien-specific
+      const estateSize = a["ESTATE_SIZE"] ? parseFloat(a["ESTATE_SIZE"]) : undefined;
+      const rooms = a["ROOMS"]?.split("X")[0]; // "3X3" → "3"
+      const floor = a["FLOOR"];
+      const propertyType = a["PROPERTY_TYPE"];
+      const pricePerSqm = price && estateSize ? Math.round(price / estateSize) : undefined;
+
       result.set(String(item.id), {
         id: String(item.id),
         title: typeof item.description === 'string' ? item.description : '',
@@ -197,6 +215,12 @@ const searchItemsApi = async (
         paylivery: a["p2penabled"] === "true",
         publishedAt: a["PUBLISHED_String"],
         condition: a["CONDITION"] || "",
+        // Immobilien fields
+        estateSize,
+        rooms,
+        floor,
+        propertyType,
+        pricePerSqm,
       });
     }
 
@@ -210,12 +234,14 @@ export const searchItems = async (
   keyword: string,
   categoryId?: string,
   page: number = 1,
-  areaIds?: number[]
+  areaIds?: number[],
+  verticalKey?: string,
 ): Promise<SearchResult> => {
+  const vc = resolveVertical(verticalKey);
   const { cookies } = await checkAuth();
   const headers = getHeaders(cookies);
 
-  let url = `${BASE_URL}/iad/kaufen-und-verkaufen/marktplatz?keyword=${encodeURIComponent(keyword)}&page=${page}`;
+  let url = `${BASE_URL}/iad/${vc.htmlPath}?keyword=${encodeURIComponent(keyword)}&page=${page}`;
   if (categoryId) {
     url += `&ATTRIBUTE_TREE=${categoryId}`;
   }
@@ -232,7 +258,7 @@ export const searchItems = async (
         if (!r.ok) throw new Error(`Search failed with status: ${r.status}`);
         return r.text();
       }),
-      searchItemsApi(keyword, categoryId, areaIds),
+      searchItemsApi(keyword, vc.vertical, vc.category, areaIds),
     ]);
 
     const html = htmlResponse;
@@ -283,6 +309,11 @@ export const searchItems = async (
           publishedAt: apiItem.publishedAt,
           condition: apiItem.condition || "",
           paylivery: apiItem.paylivery ?? false,
+          estateSize: apiItem.estateSize,
+          rooms: apiItem.rooms,
+          floor: apiItem.floor,
+          propertyType: apiItem.propertyType,
+          pricePerSqm: apiItem.pricePerSqm,
         });
         seen.add(apiItem.id!);
       }
