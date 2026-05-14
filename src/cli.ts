@@ -588,11 +588,23 @@ async function cmdTree(positional: string[], flags: Record<string, string | bool
   }
 }
 
-function cmdLocations(format: OutputFormat) {
-  const locations = Object.entries(FALLBACK_LOCATIONS).map(([id, name]) => ({
+function cmdLocations(format: OutputFormat, flags: Record<string, string | boolean>) {
+  let locations = Object.entries(FALLBACK_LOCATIONS).map(([id, name]) => ({
     id: Number(id),
     name,
   }));
+  
+  // Filter by parent (e.g. --parent 900 shows only Wien districts)
+  const parent = typeof flags.parent === 'string' ? flags.parent : undefined;
+  if (parent) {
+    const prefix = parent === '900' ? 'Wien' : undefined;
+    if (prefix) {
+      locations = locations.filter(l => l.name.startsWith(prefix + ' '));
+    }
+  } else {
+    // Default: show only Bundesländer (id < 1000)
+    locations = locations.filter(l => l.id < 1000);
+  }
   output(locations, format);
 }
 
@@ -740,7 +752,7 @@ async function main() {
       await cmdTree(positional, flags, format);
       break;
     case "locations":
-      cmdLocations(format);
+      cmdLocations(format, flags);
       break;
     case "view":
       await cmdView(positional, flags, format);
