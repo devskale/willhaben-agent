@@ -8,26 +8,30 @@ import type { Listing } from "../types.js";
 // ─── Keyword Filters ──────────────────────────────────────────────────────
 
 /**
- * Filter listings where title matches ANY keyword (OR logic).
+ * Filter listings where title OR description matches ANY keyword (OR logic).
  * Case-insensitive substring match.
  */
-export function filterByKeyword(items: Listing[], keywords: string[]): Listing[] {
+export function filterByKeyword(items: Listing[], keywords: string[], searchDescription = false): Listing[] {
   if (!keywords.length) return items;
   const lower = keywords.map(k => k.toLowerCase());
   return items.filter(item => {
-    const text = (item.title || "").toLowerCase();
+    const title = (item.title || "").toLowerCase();
+    const desc = searchDescription ? (item.description || "").toLowerCase() : "";
+    const text = searchDescription ? `${title} ${desc}` : title;
     return lower.some(kw => text.includes(kw));
   });
 }
 
 /**
- * Exclude listings where title matches ANY exclude keyword.
+ * Exclude listings where title OR description matches ANY exclude keyword.
  */
-export function excludeByKeyword(items: Listing[], excludes: string[]): Listing[] {
+export function excludeByKeyword(items: Listing[], excludes: string[], searchDescription = false): Listing[] {
   if (!excludes.length) return items;
   const lower = excludes.map(k => k.toLowerCase());
   return items.filter(item => {
-    const text = (item.title || "").toLowerCase();
+    const title = (item.title || "").toLowerCase();
+    const desc = searchDescription ? (item.description || "").toLowerCase() : "";
+    const text = searchDescription ? `${title} ${desc}` : title;
     return !lower.some(kw => text.includes(kw));
   });
 }

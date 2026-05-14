@@ -26,10 +26,10 @@ export {
 export type { ImmoFilters } from "./search-immo.js";
 
 // ─── Routing logic ───────────────────────────────────────────────────────
-import { searchMarktplatz, type MarktplatzFilters } from "./search-marktplatz.js";
+import { searchMarktplatz, getListingDetails as _getDetails, type MarktplatzFilters } from "./search-marktplatz.js";
 import { searchImmo as _searchImmo, resolveImmoVertical } from "./search-immo.js";
 import { getMarktplatzCategoryTree } from "./search-marktplatz.js";
-import type { SearchResult, CategoryTree } from "../types.js";
+import type { Listing, SearchResult, CategoryTree } from "../types.js";
 import type { ImmoFilters } from "./search-immo.js";
 
 /**
@@ -61,3 +61,34 @@ export const getCategoryTree = async (
   categoryId?: string,
   keyword?: string,
 ): Promise<CategoryTree> => getMarktplatzCategoryTree(categoryId, keyword);
+
+/**
+ * Enrich listings with descriptions by fetching detail pages in parallel batches.
+ * Modifies items in place (fills item.description).
+ */
+export const enrichDescriptions = async (
+  items: Listing[],
+  concurrency: number = 10,
+): Promise<void> => {
+  const batchSize = concurrency;
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    await Promise.allSettled(
+      batch.map(async (item) => {
+        if (item.description) return; // already has description
+        try {
+          const details = await _getDetails(item.id);
+          if (details.fullDescription) {
+            // Strip HTML tags for plain text
+            item.description = details.fullDescription
+              .replace(/<[^>]+>/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim();
+          }
+        } catch {
+          // Skip failed detail fetches
+        }
+      })
+    );
+  }
+};

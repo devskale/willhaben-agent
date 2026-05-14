@@ -536,7 +536,7 @@ export const getListingDetails = async (adId: string) => {
 
   return {
     ...basicListing,
-    fullDescription: adData.body || "",
+    fullDescription: adData.body || attributes["DESCRIPTION"]?.[0] || "",
     images: images.length > 0 ? images : fallbackImages,
     attributes,
     phone: attributes["PHONE"]?.[0],
