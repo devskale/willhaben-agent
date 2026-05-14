@@ -5,53 +5,30 @@
  *   - search-marktplatz.ts  → Marktplatz, Auto (vertical 5, 3)
  *   - search-immo.ts        → Immobilien (vertical 2)
  *
- * Each domain is fully self-contained. This file only routes + re-exports.
+ * Each domain is fully self-contained. This file only routes + re-exports
+ * what the CLI actually needs.
  */
 
-// ─── Re-exports: Marktplatz ──────────────────────────────────────────────
+// ─── Re-exports used by cli.ts / cli-helpers.ts / tests ──────────────────
 export {
-  searchMarktplatz,
-  fetchMarktplatzApi,
-  getMarktplatzCategoryTree,
   getListingDetails,
   getSeller,
   getListingImages,
-  parseApiAttributes,
-  MARKTPLATZ_VERTICALS,
-  resolveMarktplatzVertical,
-  type MarktplatzVertical,
-  type MarktplatzApiItem,
-  type ListingImage,
-  type ListingWithImages,
 } from "./search-marktplatz.js";
 
-// ─── Re-exports: Immo ────────────────────────────────────────────────────
 export {
-  searchImmo,
-  fetchImmoApi,
   getImmoOverview,
-  parseImmoItem,
-  parseImmoAttributes,
   IMMO_TYPE_MAP,
-  IMMO_VERTICALS,
-  resolveImmoVertical,
-  type ImmoFilters,
-  type ImmoApiItem,
-  type ImmoVerticalConfig,
-  type ImmoSearchResult,
-  type DistrictStats,
 } from "./search-immo.js";
 
-// ─── Imports for routing logic ───────────────────────────────────────────
+export type { ImmoFilters } from "./search-immo.js";
+
+// ─── Routing logic ───────────────────────────────────────────────────────
 import { searchMarktplatz } from "./search-marktplatz.js";
-import { searchImmo as _searchImmo } from "./search-immo.js";
-import { resolveImmoVertical } from "./search-immo.js";
+import { searchImmo as _searchImmo, resolveImmoVertical } from "./search-immo.js";
 import { getMarktplatzCategoryTree } from "./search-marktplatz.js";
 import type { SearchResult, CategoryTree } from "../types.js";
 import type { ImmoFilters } from "./search-immo.js";
-
-// Also re-export ImmoFilters at top level for cli-helpers
-// (already exported above in the immo block)
 
 /**
  * Main search entry point — routes to correct domain by verticalKey.
