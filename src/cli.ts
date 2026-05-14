@@ -2,11 +2,10 @@
 import { checkAuth } from "./agents/auth.js";
 import { searchItems, getListingDetails, getSeller, getCategoryTree, getListingImages, getImmoOverview } from "./agents/search.js";
 import type { ImmoFilters } from "./agents/search.js";
-import { FALLBACK_LOCATIONS } from "./agents/locations.js";
+import { FALLBACK_LOCATIONS, resolveLocationInput } from "./agents/locations.js";
 import {
   buildImmoFilters,
   buildMarktplatzFilters,
-  parseAreaIds,
   resolveAreaNames,
   getChildAreas,
   fmtNum,
@@ -128,13 +127,14 @@ async function cmdSearch(positional: string[], flags: Record<string, string | bo
   const rooms = typeof flags.rooms === "string" ? parseInt(flags.rooms, 10) : undefined;
   const minRooms = typeof flags["min-rooms"] === "string" ? parseInt(flags["min-rooms"], 10) : undefined;
   
-  // Parse location IDs (comma-separated)
+  // Parse location (names, PLZs, or IDs)
   let areaIds: number[] | undefined;
   if (typeof flags.location === "string") {
-    areaIds = flags.location
-      .split(",")
-      .map((s) => parseInt(s.trim(), 10))
-      .filter((n) => !isNaN(n));
+    const loc = resolveLocationInput(flags.location);
+    areaIds = loc.areaIds;
+    if (loc.resolved.length) {
+      process.stderr.write(`  📍 ${loc.resolved.map(r => `${r.name} (${r.areaId})`).join(', ')}\n`);
+    }
   }
 
   const vertical = typeof flags.vertical === "string" ? flags.vertical : undefined;
@@ -373,7 +373,8 @@ async function cmdAnalyze(positional: string[], flags: Record<string, string | b
     const sortBy = typeof flags.sort === "string" ? flags.sort : undefined;
     let areaIds: number[] | undefined;
     if (typeof flags.location === "string") {
-      areaIds = flags.location.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
+      const loc = resolveLocationInput(flags.location);
+      areaIds = loc.areaIds;
     }
     const vertical = typeof flags.vertical === "string" ? flags.vertical : undefined;
 
@@ -675,9 +676,11 @@ async function cmdChats(positional: string[], flags: Record<string, string | boo
 }
 
 async function cmdOverview(positional: string[], flags: Record<string, string | boolean>, format: OutputFormat) {
-  // Resolve area IDs: --location arg, positional args, or default to Wien districts
-  const rawIds = parseAreaIds(flags);
-  let areaIds = rawIds ? resolveAreaNames(rawIds) : getChildAreas(900);
+  // Resolve area IDs: --location arg, or default to Wien districts
+  const locInput = strFlag(flags, 'location');
+  let areaIds = locInput
+    ? resolveLocationInput(locInput).resolved.map(r => ({ areaId: r.areaId, name: r.name }))
+    : getChildAreas(900);
 
   // --parent overrides to show children of that area
   const parentId = intFlag(flags, 'parent');
