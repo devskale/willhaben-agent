@@ -561,7 +561,19 @@ async function cmdTree(positional: string[], flags: Record<string, string | bool
 
   try {
     const tree = await getCategoryTree(categoryId, keyword);
-    output(tree, format);
+    if (format === "text") {
+      if (tree.categoryName) console.log(`\n📂 ${tree.categoryName} (ID: ${tree.categoryId})\n`);
+      else console.log("\n📂 Kategorien\n");
+      const maxName = tree.children.reduce((m, c) => Math.max(m, (c.name || "").length), 0);
+      for (const c of tree.children) {
+        const name = (c.name || "").padEnd(maxName + 2);
+        const count = c.count !== undefined ? c.count.toLocaleString("de-AT") + "x" : "";
+        console.log(`  ${c.id.padEnd(8)} ${count.padStart(10)}   ${name}`);
+      }
+      console.log();
+    } else {
+      output(tree, format);
+    }
   } catch (e) {
     output({ error: e instanceof Error ? e.message : "Failed to fetch category tree" }, format);
     process.exit(1);
