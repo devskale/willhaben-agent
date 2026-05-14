@@ -84,9 +84,11 @@ export function filterBySize(
   minSize?: number,
   maxSize?: number,
 ): Listing[] {
+  // If no bounds specified, pass through (null size = unknown, not invalid)
+  if (minSize === undefined && maxSize === undefined) return items;
   return items.filter((item) => {
     const size = item.estateSize;
-    if (size === null) return false;
+    if (size === null) return true; // unknown size → keep
     if (minSize !== undefined && size < minSize) return false;
     if (maxSize !== undefined && size > maxSize) return false;
     return true;
@@ -101,9 +103,11 @@ export function filterByRooms(
   rooms?: number,
   minRooms?: number,
 ): Listing[] {
+  // If no bounds specified, pass through
+  if (rooms === undefined && minRooms === undefined) return items;
   return items.filter((item) => {
     const r = item.rooms;
-    if (r === null) return false;
+    if (r === null) return true; // unknown → keep
     const numR = typeof r === "string" ? parseInt(r, 10) : r;
     if (isNaN(numR)) return false;
     if (rooms !== undefined && numR !== rooms) return false;
