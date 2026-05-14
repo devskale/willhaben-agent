@@ -5,6 +5,33 @@
 
 import type { Listing } from "../types.js";
 
+// ─── Keyword Filters ──────────────────────────────────────────────────────
+
+/**
+ * Filter listings where title matches ANY keyword (OR logic).
+ * Case-insensitive substring match.
+ */
+export function filterByKeyword(items: Listing[], keywords: string[]): Listing[] {
+  if (!keywords.length) return items;
+  const lower = keywords.map(k => k.toLowerCase());
+  return items.filter(item => {
+    const text = (item.title || "").toLowerCase();
+    return lower.some(kw => text.includes(kw));
+  });
+}
+
+/**
+ * Exclude listings where title matches ANY exclude keyword.
+ */
+export function excludeByKeyword(items: Listing[], excludes: string[]): Listing[] {
+  if (!excludes.length) return items;
+  const lower = excludes.map(k => k.toLowerCase());
+  return items.filter(item => {
+    const text = (item.title || "").toLowerCase();
+    return !lower.some(kw => text.includes(kw));
+  });
+}
+
 // ─── Property Type Classification ───────────────────────────────────────
 
 export const PROPERTY_TYPE_GROUPS = {

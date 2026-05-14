@@ -34,6 +34,8 @@ import {
   filterBySize,
   filterByRooms,
   filterByPrice,
+  filterByKeyword,
+  excludeByKeyword,
   analyzeListings,
   compareListings,
 } from "./lib/analysis.js";
@@ -153,6 +155,12 @@ async function cmdSearch(positional: string[], flags: Record<string, string | bo
       items = filterBySize(items, minSize, maxSize);
       items = filterByRooms(items, rooms, minRooms);
     }
+
+    // Keyword title filters (work for all verticals)
+    const keywords = strFlag(flags, 'keyword');
+    if (keywords) items = filterByKeyword(items, keywords.split(',').map(s => s.trim()));
+    const excludes = strFlag(flags, 'exclude');
+    if (excludes) items = excludeByKeyword(items, excludes.split(',').map(s => s.trim()));
 
     // Sorting
     if (sortBy === "price-asc") {
@@ -712,6 +720,8 @@ function cmdHelp(format: OutputFormat) {
       { flag: "--max-size <m²>", desc: "Max estate size in m²" },
       { flag: "--rooms <n>", desc: "Exact room count filter" },
       { flag: "--min-rooms <n>", desc: "Min room count filter" },
+      { flag: "--keyword <kw>", desc: "Comma-separated keywords that ALL must appear in title" },
+      { flag: "--exclude <kw>", desc: "Comma-separated keywords to exclude from title" },
       { flag: "--private", desc: "Private sellers only" },
       { flag: "--page <n>", desc: "Page number" },
       { flag: "--text", desc: "Pretty table output" },
