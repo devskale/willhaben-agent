@@ -14,6 +14,8 @@ export {
   getListingDetails,
   getSeller,
   getListingImages,
+  CONDITION_MAP,
+  type MarktplatzFilters,
 } from "./search-marktplatz.js";
 
 export {
@@ -24,7 +26,7 @@ export {
 export type { ImmoFilters } from "./search-immo.js";
 
 // ─── Routing logic ───────────────────────────────────────────────────────
-import { searchMarktplatz } from "./search-marktplatz.js";
+import { searchMarktplatz, type MarktplatzFilters } from "./search-marktplatz.js";
 import { searchImmo as _searchImmo, resolveImmoVertical } from "./search-immo.js";
 import { getMarktplatzCategoryTree } from "./search-marktplatz.js";
 import type { SearchResult, CategoryTree } from "../types.js";
@@ -41,6 +43,7 @@ export const searchItems = async (
   verticalKey?: string,
   immoFilters?: ImmoFilters,
   immoSearchId?: number,
+  marktplatzFilters?: MarktplatzFilters,
 ): Promise<SearchResult> => {
   const immoVc = resolveImmoVertical(verticalKey);
 
@@ -49,7 +52,7 @@ export const searchItems = async (
     return { ...result, categories: [] };
   }
 
-  return searchMarktplatz(keyword, verticalKey, categoryId, page, areaIds);
+  return searchMarktplatz(keyword, verticalKey, categoryId, page, areaIds, marktplatzFilters);
 };
 
 /** Category tree — marktplatz domain. */

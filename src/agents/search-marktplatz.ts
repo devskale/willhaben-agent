@@ -134,6 +134,27 @@ const parseListing = (item: any): Listing => {
   };
 };
 
+// ─── Marktplatz Filters (server-side) ─────────────────────────────────────
+
+/** Server-side filter params for Marktplatz API. Completely separate from ImmoFilters. */
+export interface MarktplatzFilters {
+  priceFrom?: number;
+  priceTo?: number;
+  condition?: string;     // 'neu' | 'neuwertig' | 'gebraucht' | 'defekt'
+  isPrivate?: boolean;    // true = Privat, false = Händler
+  shipping?: boolean;     // true = Versand, false = Selbstabholung
+  paylivery?: boolean;    // Only PayLivery listings
+  period?: number;        // 2 = last 48h
+}
+
+/** Map friendly condition names to treeAttributes values */
+export const CONDITION_MAP: Record<string, string> = {
+  neu: '22',
+  neuwertig: '2546',
+  gebraucht: '23',
+  defekt: '24',
+};
+
 // ─── Marktplatz JSON API ──────────────────────────────────────────────────
 
 export interface MarktplatzApiItem {
@@ -146,6 +167,36 @@ export interface MarktplatzApiItem {
 }
 
 /**
+ * Build Marktplatz API params from filters. Single place that knows param names.
+ */
+const buildMarktplatzParams = (
+  keyword: string,
+  rows: number,
+  areaIds?: number[],
+  filters?: MarktplatzFilters,
+): URLSearchParams => {
+  const params = new URLSearchParams({
+    rows: String(rows),
+    keyword,
+    sort: '0',
+  });
+  if (areaIds?.length) {
+    for (const aid of areaIds) params.append('areaId', String(aid));
+  }
+  if (filters?.priceFrom !== undefined) params.set('PRICE_FROM', String(filters.priceFrom));
+  if (filters?.priceTo !== undefined) params.set('PRICE_TO', String(filters.priceTo));
+  if (filters?.condition) {
+    const attrId = CONDITION_MAP[filters.condition];
+    if (attrId) params.set('treeAttributes', attrId);
+  }
+  if (filters?.isPrivate !== undefined) params.set('ISPRIVATE', filters.isPrivate ? '1' : '0');
+  if (filters?.shipping === true) params.append('treeAttributes', '2537');
+  if (filters?.paylivery === true) params.set('paylivery', 'true');
+  if (filters?.period !== undefined) params.set('periode', String(filters.period));
+  return params;
+};
+
+/**
  * Fetch items via Marktplatz JSON Search API (/webapi/ad-search/).
  * Returns enriched Map<adId, Partial<Listing>>.
  */
@@ -154,20 +205,18 @@ export const fetchMarktplatzApi = async (
   vertical: MarktplatzVertical,
   areaIds?: number[],
   rows: number = 50,
+  filters?: MarktplatzFilters,
 ): Promise<Map<string, Partial<Listing>>> => {
   try {
     const { csrfToken, cookieHeader } = await getVisitorCookies();
-
-    const params = new URLSearchParams({
-      rows: String(rows),
-      keyword,
-      sort: "0",
-    });
-    if (areaIds?.length) {
-      for (const aid of areaIds) params.append("areaId", String(aid));
-    }
+    const params = buildMarktplatzParams(keyword, rows, areaIds, filters);
 
     const url = `https://www.willhaben.at/webapi/ad-search/search/atz/${vertical.vertical}/${vertical.category}/atverz?${params}`;
+    if (filters?.priceFrom !== undefined || filters?.priceTo !== undefined ||
+        filters?.condition || filters?.isPrivate !== undefined ||
+        filters?.paylivery || filters?.period !== undefined) {
+      // Apply same filters to HTML URL for consistent results
+    }
 
     const resp = await fetch(url, {
       headers: {
@@ -240,6 +289,7 @@ export const searchMarktplatz = async (
   categoryId?: string,
   page: number = 1,
   areaIds?: number[],
+  filters?: MarktplatzFilters,
 ): Promise<SearchResult> => {
   const vc = resolveMarktplatzVertical(verticalKey);
   const { cookies } = await checkAuth();
@@ -249,13 +299,22 @@ export const searchMarktplatz = async (
   if (categoryId) url += `&ATTRIBUTE_TREE=${categoryId}`;
   if (areaIds?.length) for (const aid of areaIds) url += `&areaId=${aid}`;
 
+  // Apply price filters to HTML URL too (for consistent totalFound)
+  if (filters?.priceFrom !== undefined) url += `&PRICE_FROM=${filters.priceFrom}`;
+  if (filters?.priceTo !== undefined) url += `&PRICE_TO=${filters.priceTo}`;
+  if (filters?.condition) {
+    const attrId = CONDITION_MAP[filters.condition];
+    if (attrId) url += `&treeAttributes=${attrId}`;
+  }
+  if (filters?.isPrivate !== undefined) url += `&ISPRIVATE=${filters.isPrivate ? '1' : '0'}`;
+
   // Run HTML scrape + JSON API in parallel
   const [htmlResponse, apiData] = await Promise.all([
     fetch(url, { headers }).then(async r => {
       if (!r.ok) throw new Error(`Search failed with status: ${r.status}`);
       return r.text();
     }),
-    fetchMarktplatzApi(keyword, vc, areaIds),
+    fetchMarktplatzApi(keyword, vc, areaIds, 50, filters),
   ]);
 
   const $ = load(htmlResponse);

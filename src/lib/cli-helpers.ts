@@ -5,6 +5,7 @@
 
 import { FALLBACK_LOCATIONS } from "../agents/locations.js";
 import type { ImmoFilters } from "../agents/search.js";
+import type { MarktplatzFilters } from "../agents/search.js";
 import { IMMO_TYPE_MAP } from "../agents/search.js";
 
 // ─── Filter Building ─────────────────────────────────────────────────────
@@ -55,6 +56,34 @@ export function buildImmoFilters(flags: Record<string, string | boolean>): ImmoF
     searchId,
     isImmo: true,
   };
+}
+
+// ─── Marktplatz Filter Building ──────────────────────────────────────────
+
+/**
+ * Build server-side MarktplatzFilters from CLI flags.
+ * Completely separate from Immo — no shared state.
+ */
+export function buildMarktplatzFilters(flags: Record<string, string | boolean>): MarktplatzFilters | undefined {
+  const vertical = typeof flags.vertical === "string" ? flags.vertical : undefined;
+  const isImmo = vertical === "immobilien" || vertical === "wohnungen" || vertical === "hauser";
+  if (isImmo) return undefined; // Immo has its own filters
+
+  const filters: MarktplatzFilters = {};
+  const maxPrice = numFlag(flags, "max-price");
+  const minPrice = numFlag(flags, "min-price");
+  if (maxPrice !== undefined) filters.priceTo = maxPrice;
+  if (minPrice !== undefined) filters.priceFrom = minPrice;
+
+  const condition = strFlag(flags, "condition");
+  if (condition) filters.condition = condition;
+
+  if (flags["private"] === true) filters.isPrivate = true;
+  if (flags.dealer === true) filters.isPrivate = false;
+  if (flags.shipping === true) filters.shipping = true;
+  if (flags.paylivery === true) filters.paylivery = true;
+
+  return Object.keys(filters).length > 0 ? filters : undefined;
 }
 
 // ─── Area / Location Helpers ─────────────────────────────────────────────

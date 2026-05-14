@@ -5,6 +5,7 @@ import type { ImmoFilters } from "./agents/search.js";
 import { FALLBACK_LOCATIONS } from "./agents/locations.js";
 import {
   buildImmoFilters,
+  buildMarktplatzFilters,
   parseAreaIds,
   resolveAreaNames,
   getChildAreas,
@@ -139,7 +140,8 @@ async function cmdSearch(positional: string[], flags: Record<string, string | bo
   try {
     // Build server-side immo filters (shared helper, single source of truth)
     const { filters: immoFilters, searchId: immoSearchId, isImmo } = buildImmoFilters(flags);
-    const result = await searchItems(query, category, page, areaIds, vertical, immoFilters, immoSearchId);
+    const marktplatzFilters = buildMarktplatzFilters(flags);
+    const result = await searchItems(query, category, page, areaIds, vertical, immoFilters, immoSearchId, marktplatzFilters);
 
     // Apply client-side filters (skip when server-side immo filters are active)
     let items = result.items;
@@ -374,7 +376,8 @@ async function cmdAnalyze(positional: string[], flags: Record<string, string | b
     const vertical = typeof flags.vertical === "string" ? flags.vertical : undefined;
 
     const { filters: immoFilters, searchId: immoSearchId, isImmo } = buildImmoFilters(flags);
-    const result = await searchItems(query, category, page, areaIds, vertical, immoFilters, immoSearchId);
+    const marktplatzFilters = buildMarktplatzFilters(flags);
+    const result = await searchItems(query, category, page, areaIds, vertical, immoFilters, immoSearchId, marktplatzFilters);
     items = result.items;
 
     if (!isImmo) {
@@ -722,6 +725,10 @@ function cmdHelp(format: OutputFormat) {
       { flag: "--min-rooms <n>", desc: "Min room count filter" },
       { flag: "--keyword <kw>", desc: "Comma-separated keywords that ALL must appear in title" },
       { flag: "--exclude <kw>", desc: "Comma-separated keywords to exclude from title" },
+      { flag: "--condition <val>", desc: "Marktplatz: neu/neuwertig/gebraucht/defekt" },
+      { flag: "--dealer", desc: "Marktplatz: show dealer listings only" },
+      { flag: "--shipping", desc: "Marktplatz: shipping available" },
+      { flag: "--paylivery", desc: "Marktplatz: buyer protection (PayLivery)" },
       { flag: "--private", desc: "Private sellers only" },
       { flag: "--page <n>", desc: "Page number" },
       { flag: "--text", desc: "Pretty table output" },
