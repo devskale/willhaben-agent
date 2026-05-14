@@ -466,6 +466,110 @@ Same as the `api.willhaben.at` version but through the webapi layer.
 
 ---
 
+## Marktplatz Search API (Server-Side Filters)
+
+> Discovered via Chrome DevTools MCP — 2026-05-14
+
+Marktplatz uses `/webapi/ad-search/search/atz/` — **completely separate** from Immobilien (`/webapi/iad/search/atz/`).
+Do NOT merge code or params between these two domains.
+
+### Endpoint
+
+```
+GET https://www.willhaben.at/webapi/ad-search/search/atz/5/301/atverz?rows=30&{params}
+```
+
+| Path segment | Value | Description |
+|-------------|-------|-------------|
+| vertical | `5` | Marktplatz vertical |
+| category | `301` | Marktplatz root category |
+| path | `atverz` | Search result path |
+
+### Server-Side Filter Parameters
+
+| Parameter | Type | Example | Description |
+|-----------|------|---------|-------------|
+| `keyword` | string | `keyword=lego` | Search terms |
+| `rows` | int | `rows=30` | Results per page (max 50 observed) |
+| `sort` | int | `sort=11` | Sort: `0`=relevance, `7`=date, `11`=price asc |
+| `b_ATTRIBUTE_TREE` | int | `b_ATTRIBUTE_TREE=3541` | Category ID (sub-category filter) |
+| `PRICE_FROM` | int | `PRICE_FROM=100` | Minimum price in EUR |
+| `PRICE_TO` | int | `PRICE_TO=500` | Maximum price in EUR |
+| `treeAttributes` | int (repeatable) | `treeAttributes=23` | Condition/delivery filter |
+| `ISPRIVATE` | int | `ISPRIVATE=1` | Seller type: `1`=Private, `0`=Dealer |
+| `areaId` | int | `areaId=900` | Location (900=Wien, 1=Burgenland, etc.) |
+| `paylivery` | string | `paylivery=true` | Only PayLivery (buyer protection) listings |
+| `periode` | int | `periode=2` | Time filter: `2`=last 48 hours |
+
+### Condition / Delivery Attributes (`treeAttributes`)
+
+| Value | Label |
+|-------|-------|
+| `22` | Neu (New) |
+| `23` | Gebraucht (Used) |
+| `24` | Defekt (Defective) |
+| `2546` | Neuwertig (Like new) |
+| `5013256` | Generalüberholt (Refurbished) |
+| `2536` | Selbstabholung (Pickup) |
+| `2537` | Versand (Shipping) |
+
+Multiple `treeAttributes` can be combined (repeatable param).
+
+### Example Calls
+
+```
+# Lego under €50
+GET /webapi/ad-search/search/atz/5/301/atverz?rows=30&keyword=lego&PRICE_TO=50
+
+# Used garden tools in Vienna
+GET /webapi/ad-search/search/atz/5/301/atverz?rows=30&keyword=rasenmäher&treeAttributes=23&areaId=900
+
+# New items with PayLivery, category Garten (3631)
+GET /webapi/ad-search/search/atz/5/301/atverz?rows=30&b_ATTRIBUTE_TREE=3631&treeAttributes=22&paylivery=true
+
+# All items in Burgenland, price €100-500, sorted by price
+GET /webapi/ad-search/search/atz/5/301/atverz?rows=30&areaId=1&PRICE_FROM=100&PRICE_TO=500&sort=11
+```
+
+### Response Structure
+
+```json
+{
+  "advertSummary": [
+    {
+      "id": "952887603",
+      "description": "Lego 32269 Technik Zahnräder",
+      "attributes": {
+        "attribute": [
+          { "name": "PRICE", "values": ["0.40"] },
+          { "name": "PRICE_FOR_DISPLAY", "values": ["€ 0,40"] },
+          { "name": "POSTCODE", "values": ["2214"] },
+          { "name": "LOCATION", "values": ["Auersthal"] },
+          { "name": "ISPRIVATE", "values": ["1"] },
+          { "name": "CONDITION", "values": [""] },
+          { "name": "COORDINATES", "values": ["48.33,16.71"] },
+          { "name": "MMO", "values": ["9/952/887/603_1234567.jpg"] }
+        ]
+      },
+      "advertImageList": { "advertImage": [{ "mainImageUrl": "https://cache.willhaben.at/mmo/..." }] }
+    }
+  ]
+}
+```
+
+Note: `rowsFound` may be `undefined` for keyword searches — use item count + HTML `rowsFound` as fallback.
+
+### Required Headers
+
+```
+Accept: application/json
+x-wh-client: api@willhaben.at;responsive_web;server;1.0.0;desktop
+x-bbx-csrf-token: {from cookie}
+Cookie: {visitor session cookies}
+```
+
+---
+
 ## Immobilien Search API (Server-Side Filters)
 
 > Discovered via Chrome DevTools MCP — 2026-05-14
