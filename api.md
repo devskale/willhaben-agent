@@ -466,6 +466,80 @@ Same as the `api.willhaben.at` version but through the webapi layer.
 
 ---
 
+## Immobilien Search API (Server-Side Filters)
+
+> Discovered via Chrome DevTools MCP — 2026-05-14
+
+Immobilien uses a **completely separate search endpoint** from Marktplatz.
+Filters are applied server-side via query parameters — no client-side filtering needed.
+
+### Endpoint
+
+```
+GET https://www.willhaben.at/webapi/iad/search/atz/2/{searchId}?rows=30&isNavigation=true&page=1&{filters}
+```
+
+### searchId to Property Type Mapping
+
+| searchId | Type |
+|----------|------|
+| 90 | Alle Immobilien |
+| 42 | Neubauprojekte |
+| 101 | Wohnung kaufen (Eigentumswohnung) |
+| 131 | Wohnung mieten (Mietwohnung) |
+| 102 | Haus kaufen |
+| 132 | Haus mieren |
+| 14 | Grundstuecke |
+| 15 | Gewerbeimmobilie kaufen |
+| 16 | Gewerbeimmobilie mieten |
+| 12 | Ferienimmobilie kaufen |
+| 32 | Ferienimmobilie mieten |
+| 35 | Sonstige Immobilien |
+
+### Server-Side Filter Parameters
+
+| Parameter | Type | Example | Description |
+|-----------|------|---------|-------------|
+| `areaId` | int (repeatable) | `areaId=900` | Location (900=Wien, 1=Burgenland, 7100=Neusiedl) |
+| `PRICE_FROM` | int | `PRICE_FROM=500` | Minimum price |
+| `PRICE_TO` | int | `PRICE_TO=300000` | Maximum price |
+| `ESTATE_SIZE/LIVING_AREA_FROM` | int | `..._FROM=50` | Minimum living area (m2) |
+| `ESTATE_SIZE/LIVING_AREA_TO` | int | `..._TO=200` | Maximum living area (m2) |
+| `NO_OF_ROOMS_BUCKET` | string | `NO_OF_ROOMS_BUCKET=3X3` | Exact room count (NxN format) |
+| `PROPERTY_TYPE` | string | `PROPERTY_TYPE=101` | Property sub-type filter |
+| `keyword` | string | `keyword=garten` | Free text search |
+
+### Example Calls
+
+```
+# Mietwohnungen Wien under 1500 euro
+GET /webapi/iad/search/atz/2/131?rows=30&areaId=900&PRICE_TO=1500
+
+# Houses Burgenland under 500k, min 100m2
+GET /webapi/iad/search/atz/2/102?rows=30&areaId=1&PRICE_TO=500000&ESTATE_SIZE/LIVING_AREA_FROM=100
+
+# 3-room rentals Vienna, max 1500 euro, min 50m2
+GET /webapi/iad/search/atz/2/131?rows=30&areaId=900&PRICE_TO=1500&ESTATE_SIZE/LIVING_AREA_FROM=50&NO_OF_ROOMS_BUCKET=3X3
+```
+
+### Response Structure
+
+Same as Marktplatz: `{ rowsFound, rowsReturned, advertSummaryList.advertSummary: [...] }`.
+Attribute names differ: `ESTATE_SIZE/LIVING_AREA`, `NUMBER_OF_ROOMS`, `RENT/PER_MONTH_LETTINGS`, `PRICE_FOR_DISPLAY`, `COORDINATES`, `ISPRIVATE`.
+
+### SEO-based Alternative
+
+Two endpoints for SEO path-based search (both work identically):
+
+```
+GET /webapi/iad/search/atz/seo/immobilien/mietwohnungen/mietwohnung-angebote?PRICE_TO=1500
+GET /webapi/ad-search/search/atz/seo/immobilien/mietwohnungen/mietwohnung-angebote?PRICE_TO=1500
+```
+
+The searchId-based endpoint is preferred — more flexible, no SEO path knowledge needed.
+
+---
+
 ## Messaging & Chat APIs
 
 ### Send Message to Seller

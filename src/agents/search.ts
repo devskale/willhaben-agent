@@ -142,11 +142,39 @@ const parseApiAttributes = (item: ApiItem): Record<string, string> => {
  * Fetch items via JSON Search API (visitor cookies, no login needed).
  * Returns a map of adId → enriched Listing data.
  */
+/** Server-side filter params for Immobilien API */
+export interface ImmoFilters {
+  priceFrom?: number;
+  priceTo?: number;
+  estateSizeFrom?: number;
+  estateSizeTo?: number;
+  rooms?: number;           // exact room count → NO_OF_ROOMS_BUCKET=NxN
+  propertyType?: string;   // PROPERTY_TYPE ID (e.g. "101" for Maisonette)
+}
+
+/** Map friendly type names to searchIds for server-side filtering */
+export const IMMO_TYPE_MAP: Record<string, number> = {
+  alle: 90,
+  wohnung: 101,       // Wohnung kaufen
+  eigentumswohnung: 101,
+  mietwohnung: 131,   // Wohnung mieten
+  haus: 102,          // Haus kaufen
+  mieethaus: 132,     // Haus mieten
+  grundstück: 14,
+  grundstueck: 14,
+  gewerbe: 15,        // Gewerbe kaufen
+  gewerbe_mieten: 16,
+  ferien: 12,         // Ferienimmobilie kaufen
+  ferien_mieten: 32,
+  neubau: 42,
+  sonstige: 35,
+};
+
 const VERTICAL_CATEGORIES: Record<string, { vertical: number; category: string; htmlPath: string; searchId?: number }> = {
   marktplatz: { vertical: 5, category: "301", htmlPath: "kaufen-und-verkaufen/marktplatz" },
   immobilien: { vertical: 2, category: "100", htmlPath: "immobilien", searchId: 90 },
-  wohnungen: { vertical: 2, category: "101", htmlPath: "immobilien/eigentumswohnung/eigentumswohnung-angebote" },
-  hauser: { vertical: 2, category: "102", htmlPath: "immobilien/haus/haus-angebote" },
+  wohnungen: { vertical: 2, category: "101", htmlPath: "immobilien/eigentumswohnung/eigentumswohnung-angebote", searchId: 101 },
+  hauser: { vertical: 2, category: "102", htmlPath: "immobilien/haus/haus-angebote", searchId: 102 },
   auto: { vertical: 3, category: "101", htmlPath: "auto/motorwagen" },
 };
 
@@ -165,6 +193,7 @@ const searchImmoApi = async (
   searchId: number,
   areaIds?: number[],
   rows: number = 30,
+  filters?: ImmoFilters,
 ): Promise<{ items: Map<string, Partial<Listing>>; totalFound: number }> => {
   try {
     const { csrfToken, cookieHeader } = await getVisitorCookies();
@@ -179,6 +208,14 @@ const searchImmoApi = async (
         params.append("areaId", String(aid));
       }
     }
+
+    // Server-side filter params (validated via Chrome DevTools inspection)
+    if (filters?.priceFrom) params.set("PRICE_FROM", String(filters.priceFrom));
+    if (filters?.priceTo) params.set("PRICE_TO", String(filters.priceTo));
+    if (filters?.estateSizeFrom) params.set("ESTATE_SIZE/LIVING_AREA_FROM", String(filters.estateSizeFrom));
+    if (filters?.estateSizeTo) params.set("ESTATE_SIZE/LIVING_AREA_TO", String(filters.estateSizeTo));
+    if (filters?.rooms) params.set("NO_OF_ROOMS_BUCKET", `${filters.rooms}X${filters.rooms}`);
+    if (filters?.propertyType) params.set("PROPERTY_TYPE", filters.propertyType);
 
     const url = `https://www.willhaben.at/webapi/iad/search/atz/2/${searchId}?${params}`;
 
@@ -346,6 +383,8 @@ export const searchItems = async (
   page: number = 1,
   areaIds?: number[],
   verticalKey?: string,
+  immoFilters?: ImmoFilters,
+  immoSearchId?: number,
 ): Promise<SearchResult> => {
   const vc = resolveVertical(verticalKey);
   const { cookies } = await checkAuth();
@@ -363,7 +402,12 @@ export const searchItems = async (
 
   // Immobilien uses a completely different API — skip HTML scrape, use dedicated endpoint
   if ("searchId" in vc && vc.searchId) {
-    const { items: apiData, totalFound: immoTotal } = await searchImmoApi(Number(vc.searchId), areaIds);
+    const { items: apiData, totalFound: immoTotal } = await searchImmoApi(
+      immoSearchId || Number(vc.searchId),
+      areaIds,
+      30,
+      immoFilters,
+    );
     const items: Listing[] = [];
     for (const [, apiItem] of apiData) {
       if (apiItem.id) {
