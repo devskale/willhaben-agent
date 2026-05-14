@@ -159,7 +159,7 @@ export const IMMO_TYPE_MAP: Record<string, number> = {
   eigentumswohnung: 101,
   mietwohnung: 131,   // Wohnung mieten
   haus: 102,          // Haus kaufen
-  mieethaus: 132,     // Haus mieten
+  miethaus: 132,       // Haus mieten
   grundstück: 14,
   grundstueck: 14,
   gewerbe: 15,        // Gewerbe kaufen
@@ -183,11 +183,114 @@ type VerticalKey = keyof typeof VERTICAL_CATEGORIES;
 const resolveVertical = (v?: string): { vertical: number; category: string; htmlPath: string; searchId?: number } =>
   VERTICAL_CATEGORIES[(v || "marktplatz") as VerticalKey] || VERTICAL_CATEGORIES.marktplatz;
 
+// ─── Shared Immo API Infrastructure ─────────────────────────────────────
+
 /**
- * Search immobilien via /webapi/iad/search/atz/2/{searchId}?areaId=...
- * This is a completely different API from Marktplatz — different endpoint,
- * different attribute names (ESTATE_SIZE/LIVING_AREA, NUMBER_OF_ROOMS vs ROOMS,
- * ESTATE_PRICE/PRICE_SUGGESTION vs PRICE). Uses searchId not vertical/category.
+ * Build URLSearchParams for immo API filters.
+ * Single place that knows the param names (PRICE_TO, ESTATE_SIZE/LIVING_AREA_FROM, etc).
+ */
+const buildImmoParams = (
+  areaIds: number[] | undefined,
+  rows: number,
+  page: number,
+  filters?: ImmoFilters,
+): URLSearchParams => {
+  const params = new URLSearchParams({
+    rows: String(rows),
+    isNavigation: "true",
+    page: String(page),
+  });
+  if (areaIds?.length) {
+    for (const aid of areaIds) {
+      params.append("areaId", String(aid));
+    }
+  }
+  if (filters?.priceFrom) params.set("PRICE_FROM", String(filters.priceFrom));
+  if (filters?.priceTo) params.set("PRICE_TO", String(filters.priceTo));
+  if (filters?.estateSizeFrom) params.set("ESTATE_SIZE/LIVING_AREA_FROM", String(filters.estateSizeFrom));
+  if (filters?.estateSizeTo) params.set("ESTATE_SIZE/LIVING_AREA_TO", String(filters.estateSizeTo));
+  if (filters?.rooms) params.set("NO_OF_ROOMS_BUCKET", `${filters.rooms}X${filters.rooms}`);
+  if (filters?.propertyType) params.set("PROPERTY_TYPE", filters.propertyType);
+  return params;
+};
+
+/**
+ * Raw fetch for the Immobilien search API. Returns parsed items + rowsFound.
+ * Shared by searchImmoApi (full listings) and getImmoOverview (stats only).
+ */
+const fetchImmoApi = async (
+  searchId: number,
+  areaIds?: number[],
+  rows: number = 30,
+  page: number = 1,
+  filters?: ImmoFilters,
+): Promise<{ items: ApiItem[]; rowsFound: number }> => {
+  const { csrfToken, cookieHeader } = await getVisitorCookies();
+  const params = buildImmoParams(areaIds, rows, page, filters);
+  const url = `https://www.willhaben.at/webapi/iad/search/atz/2/${searchId}?${params}`;
+
+  const resp = await fetch(url, {
+    headers: {
+      "User-Agent": UA,
+      Accept: "application/json",
+      "x-bbx-csrf-token": csrfToken,
+      "x-wh-client": WH_CLIENT,
+      Referer: "https://www.willhaben.at/iad/immobilien",
+      Cookie: cookieHeader,
+    },
+  });
+
+  if (!resp.ok) return { items: [], rowsFound: 0 };
+
+  const data = await resp.json() as {
+    advertSummary?: ApiItem[];
+    advertSummaryList?: { advertSummary?: ApiItem[] };
+    rowsFound?: number;
+  };
+  return {
+    items: data.advertSummary || data.advertSummaryList?.advertSummary || [],
+    rowsFound: typeof data.rowsFound === 'number' ? data.rowsFound : 0,
+  };
+};
+
+/**
+ * Parse a single immo API item into a Partial<Listing>.
+ */
+const parseImmoItem = (item: ApiItem): Partial<Listing> => {
+  const a = parseApiAttributes(item);
+  const rawPrice = a["PRICE"] || a["ESTATE_PRICE/PRICE_SUGGESTION"] || a["PRICE_FOR_DISPLAY"];
+  const price = parsePrice(rawPrice);
+  const oldPrice = parsePrice(a["OLD_PRICE"] || a["OLD_PRICE_FOR_DISPLAY"]);
+  const estateSize = parseEstateSize(a["ESTATE_SIZE"] || a["ESTATE_SIZE/LIVING_AREA"] || a["PLOT/AREA"]);
+  const rooms = parseRooms(a["NUMBER_OF_ROOMS"] || a["ROOMS"]);
+
+  return {
+    id: String(item.id),
+    title: typeof item.description === 'string' ? item.description : '',
+    price,
+    priceText: a["PRICE_FOR_DISPLAY"] || (price !== null ? `€ ${price}` : ""),
+    oldPrice,
+    oldPriceText: a["OLD_PRICE_FOR_DISPLAY"] || (oldPrice !== null ? `€ ${oldPrice}` : undefined),
+    isPrivate: a["ISPRIVATE"] === "1",
+    coordinates: a["COORDINATES"],
+    imageUrl: item.advertImageList?.advertImage?.[0]?.mainImageUrl,
+    location: [a["POSTCODE"], a["LOCATION"]].filter(Boolean).join(", "),
+    sellerId: a["ORGID"],
+    sellerName: a["ORGNAME"] || a["CONTACT/NAME"] || "",
+    paylivery: a["p2penabled"] === "true",
+    publishedAt: a["PUBLISHED_String"],
+    condition: a["CONDITION"] || "",
+    estateSize,
+    rooms,
+    floor: a["FLOOR"] || undefined,
+    propertyType: a["PROPERTY_TYPE"] || undefined,
+    pricePerSqm: computePricePerSqm(price, estateSize),
+  };
+};
+
+/**
+ * Search immobilien — returns enriched listings map + totalFound.
+ * Delegates to fetchImmoApi + parseImmoItem.
  */
 const searchImmoApi = async (
   searchId: number,
@@ -196,93 +299,12 @@ const searchImmoApi = async (
   filters?: ImmoFilters,
 ): Promise<{ items: Map<string, Partial<Listing>>; totalFound: number }> => {
   try {
-    const { csrfToken, cookieHeader } = await getVisitorCookies();
-
-    const params = new URLSearchParams({
-      rows: String(rows),
-      isNavigation: "true",
-      page: "1",
-    });
-    if (areaIds?.length) {
-      for (const aid of areaIds) {
-        params.append("areaId", String(aid));
-      }
-    }
-
-    // Server-side filter params (validated via Chrome DevTools inspection)
-    if (filters?.priceFrom) params.set("PRICE_FROM", String(filters.priceFrom));
-    if (filters?.priceTo) params.set("PRICE_TO", String(filters.priceTo));
-    if (filters?.estateSizeFrom) params.set("ESTATE_SIZE/LIVING_AREA_FROM", String(filters.estateSizeFrom));
-    if (filters?.estateSizeTo) params.set("ESTATE_SIZE/LIVING_AREA_TO", String(filters.estateSizeTo));
-    if (filters?.rooms) params.set("NO_OF_ROOMS_BUCKET", `${filters.rooms}X${filters.rooms}`);
-    if (filters?.propertyType) params.set("PROPERTY_TYPE", filters.propertyType);
-
-    const url = `https://www.willhaben.at/webapi/iad/search/atz/2/${searchId}?${params}`;
-
-    const resp = await fetch(url, {
-      headers: {
-        "User-Agent": UA,
-        Accept: "application/json",
-        "x-bbx-csrf-token": csrfToken,
-        "x-wh-client": WH_CLIENT,
-        Referer: "https://www.willhaben.at/iad/immobilien",
-        Cookie: cookieHeader,
-      },
-    });
-
-    if (!resp.ok) return { items: new Map(), totalFound: 0 };
-
-    const data = await resp.json() as { advertSummary?: ApiItem[]; advertSummaryList?: { advertSummary?: ApiItem[] }; rowsFound?: number };
-    const items = data.advertSummary || data.advertSummaryList?.advertSummary || [];
+    const { items: rawItems, rowsFound } = await fetchImmoApi(searchId, areaIds, rows, 1, filters);
     const result = new Map<string, Partial<Listing>>();
-
-    for (const item of items) {
-      const a = parseApiAttributes(item);
-
-      // Immobiliens uses ESTATE_PRICE/PRICE_SUGGESTION (not PRICE)
-      const rawPrice = a["PRICE"] || a["ESTATE_PRICE/PRICE_SUGGESTION"] || a["PRICE_FOR_DISPLAY"];
-      const price = parsePrice(rawPrice);
-      const oldPrice = parsePrice(a["OLD_PRICE"] || a["OLD_PRICE_FOR_DISPLAY"]);
-      const isPrivate = a["ISPRIVATE"] === "1";
-      const imageUrl = item.advertImageList?.advertImage?.[0]?.mainImageUrl;
-
-      // Immobiliens uses ESTATE_SIZE/LIVING_AREA or PLOT/AREA (not plain ESTATE_SIZE)
-      const rawSize = a["ESTATE_SIZE"] || a["ESTATE_SIZE/LIVING_AREA"] || a["PLOT/AREA"];
-      const estateSize = parseEstateSize(rawSize);
-
-      // Immobiliens uses NUMBER_OF_ROOMS (e.g. "7") not ROOMS (e.g. "3X3")")
-      const rawRooms = a["NUMBER_OF_ROOMS"] || a["ROOMS"];
-      const rooms = parseRooms(rawRooms);
-
-      const floor = a["FLOOR"] || undefined;
-      const propertyType = a["PROPERTY_TYPE"] || undefined;
-      const pricePerSqm = computePricePerSqm(price, estateSize);
-
-      result.set(String(item.id), {
-        id: String(item.id),
-        title: typeof item.description === 'string' ? item.description : '',
-        price,
-        priceText: a["PRICE_FOR_DISPLAY"] || (price !== null ? `€ ${price}` : ""),
-        oldPrice,
-        oldPriceText: a["OLD_PRICE_FOR_DISPLAY"] || (oldPrice !== null ? `€ ${oldPrice}` : undefined),
-        isPrivate,
-        coordinates: a["COORDINATES"],
-        imageUrl,
-        location: [a["POSTCODE"], a["LOCATION"]].filter(Boolean).join(", "),
-        sellerId: a["ORGID"],
-        sellerName: a["ORGNAME"] || a["CONTACT/NAME"] || "",
-        paylivery: a["p2penabled"] === "true",
-        publishedAt: a["PUBLISHED_String"],
-        condition: a["CONDITION"] || "",
-        estateSize,
-        rooms,
-        floor,
-        propertyType,
-        pricePerSqm,
-      });
+    for (const item of rawItems) {
+      result.set(String(item.id), parseImmoItem(item));
     }
-
-    return { items: result, totalFound: (typeof data.rowsFound === 'number' ? data.rowsFound : items.length) };
+    return { items: result, totalFound: rowsFound || rawItems.length };
   } catch {
     return { items: new Map(), totalFound: 0 };
   }
@@ -863,4 +885,104 @@ export const getListingImages = async (adId: string): Promise<ListingWithImages>
     images: allImages,
     imageCount: allImages.length,
   };
-};;
+};
+
+/**
+ * Immo overview for multiple areaIds -- returns stats per area for each property type.
+ * All math is done here, not by LLM.
+ */
+
+export interface DistrictStats {
+  areaId: number;
+  name: string;
+  types: Record<string, {
+    totalFound: number;
+    priceMin: number | null;
+    priceMedian: number | null;
+    priceMax: number | null;
+    sizeMin: number | null;
+    sizeMedian: number | null;
+    sizeMax: number | null;
+    ppm2Median: number | null;
+    ppm2Min: number | null;
+    ppm2Max: number | null;
+  }>;
+}
+
+const EMPTY_TYPE_STATS = {
+  totalFound: 0, priceMin: null, priceMedian: null, priceMax: null,
+  sizeMin: null, sizeMedian: null, sizeMax: null,
+  ppm2Median: null, ppm2Min: null, ppm2Max: null,
+};
+
+/** Compute min/median/max from a sorted array. */
+const sortedStat = (arr: number[]): { min: number | null; median: number | null; max: number | null } =>
+  arr.length === 0
+    ? { min: null, median: null, max: null }
+    : { min: arr[0], median: arr[Math.floor(arr.length / 2)], max: arr[arr.length - 1] };
+
+/**
+ * Immo overview for multiple areaIds. All math is done here, not by LLM.
+ * Reuses fetchImmoApi + parseApiAttributes — no duplicate HTTP/parse code.
+ */
+export const getImmoOverview = async (
+  areaIds: { areaId: number; name: string }[],
+  searchTypes: { searchId: number; label: string }[] = [
+    { searchId: 131, label: 'Mietwohnung' },
+    { searchId: 101, label: 'Eigentumswohnung' },
+    { searchId: 102, label: 'Haus kaufen' },
+  ],
+  rows: number = 30,
+  filters?: ImmoFilters,
+): Promise<DistrictStats[]> => {
+  const overview: DistrictStats[] = [];
+
+  for (const area of areaIds) {
+    const stats: DistrictStats = { areaId: area.areaId, name: area.name, types: {} };
+
+    for (const st of searchTypes) {
+      try {
+        const { items, rowsFound } = await fetchImmoApi(st.searchId, [area.areaId], rows, 1, filters);
+
+        const prices: number[] = [];
+        const sizes: number[] = [];
+        const ppsms: number[] = [];
+
+        for (const item of items) {
+          const a = parseApiAttributes(item);
+          const price = parsePrice(a['PRICE'] || a['ESTATE_PRICE/PRICE_SUGGESTION']);
+          const size = parseEstateSize(a['ESTATE_SIZE'] || a['ESTATE_SIZE/LIVING_AREA']);
+          if (price !== null) prices.push(price);
+          if (size !== null) sizes.push(size);
+          if (price !== null && size !== null && size > 0) ppsms.push(Math.round(price / size));
+        }
+
+        prices.sort((a, b) => a - b);
+        sizes.sort((a, b) => a - b);
+        ppsms.sort((a, b) => a - b);
+
+        const priceStats = sortedStat(prices);
+        const sizeStats = sortedStat(sizes);
+        const ppm2Stats = sortedStat(ppsms);
+
+        stats.types[st.label] = {
+          totalFound: rowsFound,
+          priceMin: priceStats.min,
+          priceMedian: priceStats.median,
+          priceMax: priceStats.max,
+          sizeMin: sizeStats.min,
+          sizeMedian: sizeStats.median,
+          sizeMax: sizeStats.max,
+          ppm2Median: ppm2Stats.median,
+          ppm2Min: ppm2Stats.min,
+          ppm2Max: ppm2Stats.max,
+        };
+      } catch {
+        stats.types[st.label] = { ...EMPTY_TYPE_STATS };
+      }
+    }
+    overview.push(stats);
+  }
+
+  return overview;
+};

@@ -1,7 +1,21 @@
 #!/usr/bin/env node
 import { checkAuth } from "./agents/auth.js";
-import { searchItems, getListingDetails, getSeller, getCategoryTree, getListingImages, IMMO_TYPE_MAP, ImmoFilters } from "./agents/search.js";
+import { searchItems, getListingDetails, getSeller, getCategoryTree, getListingImages, getImmoOverview } from "./agents/search.js";
+import type { ImmoFilters } from "./agents/search.js";
 import { FALLBACK_LOCATIONS } from "./agents/locations.js";
+import {
+  buildImmoFilters,
+  parseAreaIds,
+  resolveAreaNames,
+  getChildAreas,
+  fmtNum,
+  fmtCur,
+  fmtPpm2,
+  strFlag,
+  numFlag,
+  intFlag,
+  boolFlag,
+} from "./lib/cli-helpers.js";
 import {
   getStarredItems,
   toggleStar,
@@ -41,6 +55,7 @@ const COMMANDS = {
   chats: "List conversations or view messages (optional: conversation UUID)",
   favorites: "Manage favorites (list/add/remove)",
   history: "Show search history",
+  overview: "Immo overview: stats by district/area for Mietwohnung, Eigentumswohnung, Haus",
   help: "Show this help",
 };
 
@@ -120,52 +135,22 @@ async function cmdSearch(positional: string[], flags: Record<string, string | bo
 
   const vertical = typeof flags.vertical === "string" ? flags.vertical : undefined;
   try {
-    // Build server-side immo filters if vertical is immobilien
-    let immoFilters: ImmoFilters | undefined;
-    let immoSearchId: number | undefined;
-    const isImmo = vertical === 'immobilien' || vertical === 'wohnungen' || vertical === 'hauser';
-    if (isImmo) {
-      immoFilters = {};
-      if (maxPrice !== undefined && !isNaN(maxPrice)) immoFilters.priceTo = maxPrice;
-      if (minPrice !== undefined && !isNaN(minPrice)) immoFilters.priceFrom = minPrice;
-      if (minSize !== undefined && !isNaN(minSize)) immoFilters.estateSizeFrom = minSize;
-      if (maxSize !== undefined && !isNaN(maxSize)) immoFilters.estateSizeTo = maxSize;
-      if (rooms !== undefined && !isNaN(rooms)) immoFilters.rooms = rooms;
-      // Map --type to searchId for server-side filtering
-      if (propertyType) {
-        const mapped = IMMO_TYPE_MAP[propertyType.toLowerCase()];
-        if (mapped) immoSearchId = mapped;
-        else immoFilters.propertyType = propertyType; // pass raw PROPERTY_TYPE ID
-      }
-      // Clean up empty filters
-      if (Object.keys(immoFilters).length === 0) immoFilters = undefined;
-    }
+    // Build server-side immo filters (shared helper, single source of truth)
+    const { filters: immoFilters, searchId: immoSearchId, isImmo } = buildImmoFilters(flags);
     const result = await searchItems(query, category, page, areaIds, vertical, immoFilters, immoSearchId);
 
-    // Apply client-side filters (skip for immo with server-side filters)
+    // Apply client-side filters (skip when server-side immo filters are active)
     let items = result.items;
 
-    if (isImmo && (immoFilters || immoSearchId)) {
-      // Server-side filtering already applied — skip redundant client-side filters
-      // Only apply sort here
-    } else {
-      // Price filter
+    if (!isImmo) {
       if (maxPrice !== undefined && !isNaN(maxPrice)) {
         items = items.filter((i) => i.price !== null && i.price <= maxPrice);
       }
       if (minPrice !== undefined && !isNaN(minPrice)) {
         items = items.filter((i) => i.price !== null && i.price >= minPrice);
       }
-
-      // Property type filter (immobilien)
-      if (propertyType) {
-        items = filterByType(items, propertyType);
-      }
-
-      // Size filters
+      if (propertyType) items = filterByType(items, propertyType);
       items = filterBySize(items, minSize, maxSize);
-
-      // Room filters
       items = filterByRooms(items, rooms, minRooms);
     }
 
@@ -380,34 +365,16 @@ async function cmdAnalyze(positional: string[], flags: Record<string, string | b
     }
     const vertical = typeof flags.vertical === "string" ? flags.vertical : undefined;
 
-    // Build server-side immo filters if vertical is immobilien
-    let immoFilters: ImmoFilters | undefined;
-    let immoSearchId: number | undefined;
-    const isImmo = vertical === 'immobilien' || vertical === 'wohnungen' || vertical === 'hauser';
-    if (isImmo) {
-      immoFilters = {};
-      if (maxPrice !== undefined && !isNaN(maxPrice)) immoFilters.priceTo = maxPrice;
-      if (minPrice !== undefined && !isNaN(minPrice)) immoFilters.priceFrom = minPrice;
-      if (minSize !== undefined && !isNaN(minSize)) immoFilters.estateSizeFrom = minSize;
-      if (maxSize !== undefined && !isNaN(maxSize)) immoFilters.estateSizeTo = maxSize;
-      if (rooms !== undefined && !isNaN(rooms)) immoFilters.rooms = rooms;
-      // Map --type to searchId for server-side filtering
-      if (propertyType) {
-        const mapped = IMMO_TYPE_MAP[propertyType.toLowerCase()];
-        if (mapped) immoSearchId = mapped;
-        else immoFilters.propertyType = propertyType; // pass raw PROPERTY_TYPE ID
-      }
-      // Clean up empty filters
-      if (Object.keys(immoFilters).length === 0) immoFilters = undefined;
-    }
+    const { filters: immoFilters, searchId: immoSearchId, isImmo } = buildImmoFilters(flags);
     const result = await searchItems(query, category, page, areaIds, vertical, immoFilters, immoSearchId);
     items = result.items;
 
-    // Apply filters
-    items = filterByPrice(items, minPrice, maxPrice);
-    if (propertyType) items = filterByType(items, propertyType);
-    items = filterBySize(items, minSize, maxSize);
-    items = filterByRooms(items, rooms);
+    if (!isImmo) {
+      items = filterByPrice(items, minPrice, maxPrice);
+      if (propertyType) items = filterByType(items, propertyType);
+      items = filterBySize(items, minSize, maxSize);
+      items = filterByRooms(items, rooms);
+    }
 
     if (sortBy === "price-asc") items.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
     else if (sortBy === "price-desc") items.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
@@ -682,6 +649,52 @@ async function cmdChats(positional: string[], flags: Record<string, string | boo
   }
 }
 
+async function cmdOverview(positional: string[], flags: Record<string, string | boolean>, format: OutputFormat) {
+  // Resolve area IDs: --location arg, positional args, or default to Wien districts
+  const rawIds = parseAreaIds(flags);
+  let areaIds = rawIds ? resolveAreaNames(rawIds) : getChildAreas(900);
+
+  // --parent overrides to show children of that area
+  const parentId = intFlag(flags, 'parent');
+  if (parentId) areaIds = getChildAreas(parentId);
+
+  // Build filters using shared helper
+  const { filters: activeFilters } = buildImmoFilters(flags);
+
+  try {
+    const overview = await getImmoOverview(areaIds, undefined, 30, activeFilters);
+    
+    if (format === 'text') {
+      // Pretty text output
+      // Use shared formatters
+      
+      for (const [typeName, typeLabel] of [['Mietwohnung', 'MIETWOHNUNGEN'], ['Eigentumswohnung', 'EIGENTUMSWOHNUNGEN'], ['Haus kaufen', 'HÄUSER KAUFEN']] as [string, string][]) {
+        console.log(`\n  ${'═'.repeat(90)}`);
+        console.log(`  ${typeLabel}`);
+        console.log(`  ${'═'.repeat(90)}`);
+        console.log();
+        console.log(`  ${'Bezirk'.padEnd(24)} ${'Angebote'.padStart(8)} ${'Preis Median'.padStart(14)} ${'m² Median'.padStart(10)} ${'€/m² Median'.padStart(12)} ${'Preis Min'.padStart(12)} ${'Preis Max'.padStart(12)}`);
+        console.log(`  ${'─'.repeat(90)}`);
+        
+        for (const d of overview) {
+          const t = d.types[typeName];
+          if (!t) continue;
+          const name = d.name.replace('Wien ', '').substring(0, 22);
+          if (t.totalFound === 0 && typeName === 'Haus kaufen') continue;
+          console.log(`  ${name.padEnd(24)} ${String(t.totalFound).padStart(8)} ${fmtCur(t.priceMedian).padStart(14)} ${fmtNum(t.sizeMedian).padStart(8)} m² ${fmtPpm2(t.ppm2Median).padStart(12)} ${fmtCur(t.priceMin).padStart(12)} ${fmtCur(t.priceMax).padStart(12)}`);
+        }
+        console.log();
+      }
+      return;
+    }
+    
+    output(overview, format);
+  } catch (e) {
+    output({ error: e instanceof Error ? e.message : 'Overview failed' }, format);
+    process.exit(1);
+  }
+}
+
 function cmdHelp(format: OutputFormat) {
   const help = {
     name: "whcli",
@@ -694,7 +707,7 @@ function cmdHelp(format: OutputFormat) {
       { flag: "--sort <mode>", desc: "price-asc | price-desc | newest" },
       { flag: "--max-price <amount>", desc: "Max price filter" },
       { flag: "--min-price <amount>", desc: "Min price filter" },
-      { flag: "--type <type>", desc: "Immo type (server-side!): wohnung|mietwohnung|haus|mieethaus|grundstück|gewerbe" },
+      { flag: "--type <type>", desc: "Immo type (server-side!): wohnung|mietwohnung|haus|miethaus|grundstück|gewerbe" },
       { flag: "--min-size <m²>", desc: "Min estate size in m²" },
       { flag: "--max-size <m²>", desc: "Max estate size in m²" },
       { flag: "--rooms <n>", desc: "Exact room count filter" },
@@ -786,6 +799,9 @@ async function main() {
       break;
     case "wishlist":
       cmdWishlist(positional, flags, format);
+      break;
+    case "overview":
+      await cmdOverview(positional, flags, format);
       break;
     case "help":
     case "--help":
