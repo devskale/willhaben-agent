@@ -116,6 +116,7 @@ async function cmdSearch(positional: string[], flags: Record<string, string | bo
   }
 
   const page = typeof flags.page === "string" ? parseInt(flags.page, 10) : 1;
+  const maxPages = typeof flags.pages === "string" ? parseInt(flags.pages, 10) : 1;
   const category = typeof flags.category === "string" ? flags.category : undefined;
   const sortBy = typeof flags.sort === "string" ? flags.sort : undefined; // price-asc, price-desc, newest
   const privateOnly = flags.private === true;
@@ -141,7 +142,7 @@ async function cmdSearch(positional: string[], flags: Record<string, string | bo
     // Build server-side immo filters (shared helper, single source of truth)
     const { filters: immoFilters, searchId: immoSearchId, isImmo } = buildImmoFilters(flags);
     const marktplatzFilters = buildMarktplatzFilters(flags);
-    const result = await searchItems(query, category, page, areaIds, vertical, immoFilters, immoSearchId, marktplatzFilters);
+    const result = await searchItems(query, category, page, areaIds, vertical, immoFilters, immoSearchId, marktplatzFilters, maxPages);
 
     // Apply client-side filters (skip when server-side immo filters are active)
     let items = result.items;
@@ -361,6 +362,7 @@ async function cmdAnalyze(positional: string[], flags: Record<string, string | b
     // Run a search first
     const query = positional.join(" ");
     const page = typeof flags.page === "string" ? parseInt(flags.page, 10) : 1;
+    const maxPages = typeof flags.pages === "string" ? parseInt(flags.pages, 10) : 1;
     const category = typeof flags.category === "string" ? flags.category : undefined;
     const maxPrice = typeof flags["max-price"] === "string" ? parseFloat(flags["max-price"]) : undefined;
     const minPrice = typeof flags["min-price"] === "string" ? parseFloat(flags["min-price"]) : undefined;
@@ -377,7 +379,7 @@ async function cmdAnalyze(positional: string[], flags: Record<string, string | b
 
     const { filters: immoFilters, searchId: immoSearchId, isImmo } = buildImmoFilters(flags);
     const marktplatzFilters = buildMarktplatzFilters(flags);
-    const result = await searchItems(query, category, page, areaIds, vertical, immoFilters, immoSearchId, marktplatzFilters);
+    const result = await searchItems(query, category, page, areaIds, vertical, immoFilters, immoSearchId, marktplatzFilters, maxPages);
     items = result.items;
 
     if (!isImmo) {
@@ -731,6 +733,7 @@ function cmdHelp(format: OutputFormat) {
       { flag: "--paylivery", desc: "Marktplatz: buyer protection (PayLivery)" },
       { flag: "--private", desc: "Private sellers only" },
       { flag: "--page <n>", desc: "Page number" },
+      { flag: "--pages <n>", desc: "Fetch N pages of results (default 1)" },
       { flag: "--text", desc: "Pretty table output" },
       { flag: "--json", desc: "JSON output (default)" },
     ],

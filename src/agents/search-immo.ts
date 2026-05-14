@@ -212,13 +212,34 @@ export const searchImmo = async (
   areaIds?: number[],
   rows: number = 30,
   filters?: ImmoFilters,
+  maxPages: number = 1,
 ): Promise<ImmoSearchResult> => {
   const { items: rawItems, rowsFound } = await fetchImmoApi(searchId, areaIds, rows, 1, filters);
 
   const items: Listing[] = [];
+  const seen = new Set<string>();
+  pushImmoItems(rawItems, items, seen);
+
+  // Fetch additional pages
+  const pagesNeeded = Math.min(maxPages, Math.ceil(rowsFound / rows));
+  if (pagesNeeded > 1) {
+    const extraPages = Array.from({ length: pagesNeeded - 1 }, (_, i) => i + 2);
+    const extraResults = await Promise.all(
+      extraPages.map(p => fetchImmoApi(searchId, areaIds, rows, p, filters))
+    );
+    for (const res of extraResults) {
+      pushImmoItems(res.items, items, seen);
+    }
+  }
+
+  return { items, totalFound: rowsFound || items.length };
+};
+
+function pushImmoItems(rawItems: ImmoApiItem[], items: Listing[], seen: Set<string>): void {
   for (const item of rawItems) {
     const parsed = parseImmoItem(item);
-    if (!parsed.id) continue;
+    if (!parsed.id || seen.has(parsed.id)) continue;
+    seen.add(parsed.id);
 
     items.push({
       id: parsed.id,
@@ -245,9 +266,7 @@ export const searchImmo = async (
       pricePerSqm: parsed.pricePerSqm ?? null,
     });
   }
-
-  return { items, totalFound: rowsFound || rawItems.length };
-};
+}
 
 // ─── District Overview / Stats ───────────────────────────────────────────
 

@@ -44,15 +44,16 @@ export const searchItems = async (
   immoFilters?: ImmoFilters,
   immoSearchId?: number,
   marktplatzFilters?: MarktplatzFilters,
+  maxPages: number = 1,
 ): Promise<SearchResult> => {
   const immoVc = resolveImmoVertical(verticalKey);
 
   if (immoVc) {
-    const result = await _searchImmo(immoSearchId || immoVc.searchId, areaIds, 30, immoFilters);
+    const result = await _searchImmo(immoSearchId || immoVc.searchId, areaIds, 30, immoFilters, maxPages);
     return { ...result, categories: [] };
   }
 
-  return searchMarktplatz(keyword, verticalKey, categoryId, page, areaIds, marktplatzFilters);
+  return searchMarktplatz(keyword, verticalKey, categoryId, page, areaIds, marktplatzFilters, maxPages);
 };
 
 /** Category tree — marktplatz domain. */

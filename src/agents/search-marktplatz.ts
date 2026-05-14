@@ -172,6 +172,7 @@ export interface MarktplatzApiItem {
 const buildMarktplatzParams = (
   keyword: string,
   rows: number,
+  page: number = 1,
   areaIds?: number[],
   filters?: MarktplatzFilters,
 ): URLSearchParams => {
@@ -180,6 +181,7 @@ const buildMarktplatzParams = (
     keyword,
     sort: '0',
   });
+  if (page > 1) params.set('page', String(page));
   if (areaIds?.length) {
     for (const aid of areaIds) params.append('areaId', String(aid));
   }
@@ -205,11 +207,12 @@ export const fetchMarktplatzApi = async (
   vertical: MarktplatzVertical,
   areaIds?: number[],
   rows: number = 50,
+  page: number = 1,
   filters?: MarktplatzFilters,
-): Promise<Map<string, Partial<Listing>>> => {
+): Promise<{ items: Map<string, Partial<Listing>>; rowsFound: number }> => {
   try {
     const { csrfToken, cookieHeader } = await getVisitorCookies();
-    const params = buildMarktplatzParams(keyword, rows, areaIds, filters);
+    const params = buildMarktplatzParams(keyword, rows, page, areaIds, filters);
 
     const url = `https://www.willhaben.at/webapi/ad-search/search/atz/${vertical.vertical}/${vertical.category}/atverz?${params}`;
     if (filters?.priceFrom !== undefined || filters?.priceTo !== undefined ||
@@ -229,7 +232,7 @@ export const fetchMarktplatzApi = async (
       },
     });
 
-    if (!resp.ok) return new Map(); // Graceful fallback — HTML results still work
+    if (!resp.ok) return { items: new Map(), rowsFound: 0 };
 
     const data = await resp.json() as {
       advertSummary?: MarktplatzApiItem[];
@@ -272,9 +275,9 @@ export const fetchMarktplatzApi = async (
       });
     }
 
-    return result;
+    return { items: result, rowsFound: data.rowsFound || 0 };
   } catch {
-    return new Map();
+    return { items: new Map(), rowsFound: 0 };
   }
 };
 
@@ -290,6 +293,7 @@ export const searchMarktplatz = async (
   page: number = 1,
   areaIds?: number[],
   filters?: MarktplatzFilters,
+  maxPages: number = 1,
 ): Promise<SearchResult> => {
   const vc = resolveMarktplatzVertical(verticalKey);
   const { cookies } = await checkAuth();
@@ -308,13 +312,13 @@ export const searchMarktplatz = async (
   }
   if (filters?.isPrivate !== undefined) url += `&ISPRIVATE=${filters.isPrivate ? '1' : '0'}`;
 
-  // Run HTML scrape + JSON API in parallel
-  const [htmlResponse, apiData] = await Promise.all([
+  // Page 1: HTML scrape (categories + totalFound) + JSON API in parallel
+  const [htmlResponse, apiResult] = await Promise.all([
     fetch(url, { headers }).then(async r => {
       if (!r.ok) throw new Error(`Search failed with status: ${r.status}`);
       return r.text();
     }),
-    fetchMarktplatzApi(keyword, vc, areaIds, 50, filters),
+    fetchMarktplatzApi(keyword, vc, areaIds, 50, 1, filters),
   ]);
 
   const $ = load(htmlResponse);
@@ -331,11 +335,40 @@ export const searchMarktplatz = async (
   const totalFound = searchResult.rowsFound || ads.length;
   const htmlItems = ads.map(parseListing);
 
-  // Merge: prefer API items (richer data), fill gaps with HTML items
+  // Merge page 1: prefer API items (richer data), fill gaps with HTML items
   const items: Listing[] = [];
   const seen = new Set<string>();
+  mergeApiItems(apiResult.items, items, seen);
+  mergeHtmlItems(htmlItems, items, seen);
 
-  for (const [, apiItem] of apiData) {
+  // Fetch additional pages (API only — no HTML needed for categories)
+  const perPage = 50;
+  const pagesNeeded = Math.min(maxPages, Math.ceil(totalFound / perPage));
+  if (pagesNeeded > 1) {
+    const extraPages = Array.from({ length: pagesNeeded - 1 }, (_, i) => i + 2);
+    const extraResults = await Promise.all(
+      extraPages.map(p => fetchMarktplatzApi(keyword, vc, areaIds, perPage, p, filters))
+    );
+    for (const res of extraResults) {
+      mergeApiItems(res.items, items, seen);
+    }
+  }
+
+  // Extract categories
+  let categories: CategorySuggestion[] = extractCategories(searchResult, categorySuggestionsData);
+  categories.sort((a, b) => b.count - a.count);
+
+  return { items, totalFound, categories };
+};
+
+// ─── Merge helpers ───────────────────────────────────────────────────────
+
+function mergeApiItems(
+  apiItems: Map<string, Partial<Listing>>,
+  items: Listing[],
+  seen: Set<string>,
+): void {
+  for (const [, apiItem] of apiItems) {
     if (apiItem.id && !seen.has(apiItem.id)) {
       items.push({
         id: apiItem.id,
@@ -364,20 +397,16 @@ export const searchMarktplatz = async (
       seen.add(apiItem.id!);
     }
   }
+}
 
+function mergeHtmlItems(htmlItems: Listing[], items: Listing[], seen: Set<string>): void {
   for (const item of htmlItems) {
     if (!seen.has(item.id)) {
       items.push(item);
       seen.add(item.id);
     }
   }
-
-  // Extract categories
-  let categories: CategorySuggestion[] = extractCategories(searchResult, categorySuggestionsData);
-  categories.sort((a, b) => b.count - a.count);
-
-  return { items, totalFound, categories };
-};
+}
 
 // ─── Category Extraction ─────────────────────────────────────────────────
 
