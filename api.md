@@ -507,6 +507,195 @@ Same as the `api.willhaben.at` version but through the webapi layer.
 
 ---
 
+## Vehicle Search API (Auto / Motorrad / Nutzfahrzeug / Wohnwagen)
+
+> Discovered via Chrome DevTools MCP — 2026-05-15
+
+All vehicle types share **vertical `3`** and the same webapi endpoint, but use different `searchId` values
+and have **type-specific attributes** (different prefixes like `CAR_MODEL/`, `MC_MODEL/`, `VAN_MODEL/`, `CARAVAN_MODEL/`).
+
+### Sub-Verticals
+
+| searchId | Type | adTypeId | productId | Anzeigen | Spezifische Attribute |
+|----------|------|----------|-----------|----------|----------------------|
+| `2` | **Auto** (Gebrauchtwagen) | `20` | `40020` | ~147.785 | `CAR_MODEL/MAKE`, `CAR_MODEL/MODEL`, `CAR_TYPE`, `EQUIPMENT` |
+| `4` | **Motorrad / Quad** | `21` | `40021` | ~40.455 | `MC_MODEL/MAKE`, `MC_MODEL/MODEL`, `MC_CATEGORY`, `ENGINEVOLUME` |
+| `50` | **Nutzfahrzeug / Pickup** | `25` | `40025` | ~13.087 | `VAN_MODEL/MAKE`, `VAN_MODEL/MODEL`, `VAN_SEGMENT` |
+| `52` | **Wohnwagen / Wohnmobile** | `26` | `40026` | ~3.869 | `CARAVAN_MODEL/MAKE`, `CARAVAN_MODEL/MODEL`, `CARAVAN_SEGMENT`, `NO_OF_BERTHS` |
+
+### Endpoint
+
+```
+GET https://www.willhaben.at/webapi/ad-search/search/atz/3/{searchId}/atverz?rows=30&{params}
+```
+
+| Path segment | Value | Description |
+|-------------|-------|-------------|
+| vertical | `3` | Fahrzeuge (all vehicle types) |
+| searchId | `2/4/50/52` | See sub-vertical table above |
+| path | `atverz` | Search result path |
+
+### Search Parameters
+
+| Parameter | Type | Example | Description |
+|-----------|------|---------|-------------|
+| `keyword` | string | `keyword=golf` | Free text search (make, model, etc.) |
+| `rows` | int | `rows=30` | Results per page |
+| `PAGE` | int | `PAGE=2` | Page number (1-based) |
+| `PRICE_FROM` | int | `PRICE_FROM=1000` | Minimum price |
+| `PRICE_TO` | int | `PRICE_TO=5000` | Maximum price |
+| `areaId` | int | `areaId=900` | Location (900=Wien) |
+| `sort` | int | `sort=11` | Sort: `0`=relevance, `7`=date, `11`=price asc |
+| `CAR_MODEL/MAKE` | string | `CAR_MODEL/MAKE=VW` | Car make/brand |
+| `CAR_MODEL/MODEL` | string | `CAR_MODEL/MODEL=Golf` | Car model |
+| `YEAR_MODEL_FROM` | int | `YEAR_MODEL_FROM=2010` | Minimum year (Erstzulassung) |
+| `YEAR_MODEL_TO` | int | `YEAR_MODEL_TO=2020` | Maximum year |
+| `MILEAGE_FROM` | int | `MILEAGE_FROM=0` | Minimum km |
+| `MILEAGE_TO` | int | `MILEAGE_TO=100000` | Maximum km |
+| `ENGINE/FUEL` | string | `ENGINE/FUEL=100003` | Fuel type code |
+| `ENGINE/EFFECT_FROM` | int | `ENGINE/EFFECT_FROM=50` | Min power (kW) |
+| `TRANSMISSION` | string | `TRANSMISSION=180001` | Transmission code |
+| `CAR_TYPE` | string | `CAR_TYPE=Kombi / Family Van` | Body type |
+| `ISPRIVATE` | int | `ISPRIVATE=1` | `1`=Private, `0`=Dealer |
+| `CONDITION_REPORT` | int | `CONDITION_REPORT=1` | Has condition report (Pickerl) |
+
+### Fuel Type Codes (`ENGINE/FUEL`)
+
+| Code | Fuel |
+|------|------|
+| `100003` | Diesel |
+| `100004` | Benzin (Petrol) |
+| `100004` | Benzin |
+| `100008` | Elektro (Electric) |
+| `100009` | Hybrid |
+| `100010` | Erdgas (CNG) |
+| `100011` | Autogas (LPG) |
+
+### Transmission Codes (`TRANSMISSION`)
+
+| Code | Type |
+|------|------|
+| `180001` | Schaltgetriebe (Manual) |
+| `180002` | Automatik (Automatic) |
+
+### Car-Specific Response Attributes
+
+Each car listing has these extra attributes beyond the standard Marktplatz ones:
+
+| Attribute | Example | Description |
+|-----------|---------|-------------|
+| `CAR_MODEL/MAKE` | `VW` | Brand |
+| `CAR_MODEL/MODEL` | `Golf` | Model |
+| `CAR_MODEL/MODEL_SPECIFICATION` | `1.6 tdi` | Variant/sub-model |
+| `YEAR_MODEL` | `2009` | Year of first registration (Erstzulassung) |
+| `MILEAGE` | `230000` | Kilometers |
+| `ENGINE/EFFECT` | `77` | Power in kW |
+| `ENGINE/FUEL` | `100003` | Fuel type code |
+| `ENGINE/FUEL_RESOLVED` | `Diesel` | Fuel type label |
+| `TRANSMISSION` | `180001` | Transmission code |
+| `TRANSMISSION_RESOLVED` | `Schaltgetriebe` | Transmission label |
+| `CAR_TYPE` | `Kombi / Family Van` | Body type |
+| `CONDITION` | `20` | Condition code (`20`=Gebrauchtwagen) |
+| `CONDITION_RESOLVED` | `Gebrauchtwagen` | Condition label |
+| `CONDITION_REPORT` | `1` / `-1` | Has condition report (Pickerl)? |
+| `EQUIPMENT` | `23;67;89;...` | Semicolon-separated equipment codes |
+| `EQUIPMENT_RESOLVED` | `["ABS","Alufelgen",...]` | Equipment labels (JSON array in values) |
+| `EXTERIORCOLOURMAIN` | `2` | Color code |
+| `NOOFSEATS` | `5` | Number of seats |
+| `NO_OF_OWNERS` | `2` | Number of previous owners |
+| `WARRANTY` | `-1` | Warranty (`-1`=Nein) |
+| `WARRANTY_RESOLVED` | `Nein` | Warranty label |
+| `DEFECTS_LIABILITY` | `1` | Gewährleistung (dealer warranty) |
+
+### `teaserAttributes` (Pre-formatted)
+
+Each item has a `teaserAttributes` array with pre-formatted strings:
+```json
+[{"prefix":null,"value":"2009","postfix":"EZ"},
+ {"prefix":null,"value":"230.000","postfix":"km"},
+ {"prefix":null,"value":"90","postfix":"PS (66 kW)"}]
+```
+
+### `dmpParameters` (Analytics)
+
+Rich structured data for analytics — useful as a data source:
+```json
+{"make":["VW"],"model":["Golf"],"fuel":["Diesel"],"mileage":230000,
+ "registrationfirstyear":2009,"effect":66,"transmission":["Schaltgetriebe"],
+ "motorcondition":["Gebrauchtwagen"],"price":4499,"city":["Linz"],
+ "postcode":[4020],"state":["Oberoesterreich"]}
+```
+
+### Motorrad/Quad-Specific Attributes (searchId=4)
+
+| Attribute | Example | Description |
+|-----------|---------|-------------|
+| `MC_MODEL/MAKE` | `Honda` | Brand |
+| `MC_MODEL/MODEL` | `Sonstige` | Model (often generic) |
+| `MC_MODEL/MODEL_SPECIFICATION` | `RD04` | Specific variant |
+| `MC_CATEGORY` | `12` | Category code |
+| `MC_CATEGORY_RESOLVED` | `Tourer` | Category label |
+| `ENGINEVOLUME` | `750` | Engine displacement in ccm |
+
+Teaser format: `[{value:"1990",postfix:"EZ"},{value:"45.000",postfix:"km"},{value:"750",postfix:"ccm"}]`
+
+### Nutzfahrzeug/Pickup-Specific Attributes (searchId=50)
+
+| Attribute | Example | Description |
+|-----------|---------|-------------|
+| `VAN_MODEL/MAKE` | `IVECO` | Brand |
+| `VAN_MODEL/MODEL` | `Daily` | Model |
+| `VAN_SEGMENT` | `Transporter / Kastenwagen` | Vehicle type |
+
+Shares `ENGINE/FUEL`, `TRANSMISSION`, `MILEAGE`, `YEAR_MODEL` with Auto.
+
+### Wohnwagen/Wohnmobile-Specific Attributes (searchId=52)
+
+| Attribute | Example | Description |
+|-----------|---------|-------------|
+| `CARAVAN_MODEL/MAKE` | `Fendt` | Brand |
+| `CARAVAN_MODEL/MODEL` | `Topas 510 TG` | Model |
+| `CARAVAN_SEGMENT` | `1` | Segment code |
+| `CARAVAN_SEGMENT_RESOLVED` | `Wohnwagen` | Segment label |
+| `NO_OF_BERTHS` | `4` | Number of beds |
+| `EQUIPMENT` | `44;46;35;...` | Equipment codes |
+
+Teaser format: `[{value:"2006",postfix:"EZ"},{value:"1.000",postfix:"km"},{value:"4",postfix:"Betten"}]`
+
+### Example Calls (all sub-verticals)
+
+```
+# Auto: Golf under €5000
+GET /webapi/ad-search/search/atz/3/2/atverz?rows=30&keyword=golf&PRICE_TO=5000
+
+# Motorrad: Honda in Wien
+GET /webapi/ad-search/search/atz/3/4/atverz?rows=30&keyword=honda&areaId=900
+
+# Nutzfahrzeug: Diesel under €10.000
+GET /webapi/ad-search/search/atz/3/50/atverz?rows=30&ENGINE/FUEL=100003&PRICE_TO=10000
+
+# Wohnwagen: with condition report, 4+ beds
+GET /webapi/ad-search/search/atz/3/52/atverz?rows=30&CONDITION_REPORT=1
+
+# Auto: Diesel in Vienna, 2010+, under €10.000
+GET /webapi/ad-search/search/atz/3/2/atverz?rows=30&ENGINE/FUEL=100003&areaId=900&YEAR_MODEL_FROM=2010&PRICE_TO=10000
+
+# Auto: Private sellers only, automatic, max 100k km
+GET /webapi/ad-search/search/atz/3/2/atverz?rows=30&ISPRIVATE=1&TRANSMISSION=180002&MILEAGE_TO=100000
+
+# Motorrad: over 600ccm
+GET /webapi/ad-search/search/atz/3/4/atverz?rows=30&keyword=honda
+```
+
+### HTML Fallback (SSR)
+
+The car search pages are served by a **different Next.js app** (`bbx-search`) than Marktplatz (`bbx-atz`):
+- URL: `https://www.willhaben.at/iad/gebrauchtwagen/auto/gebrauchtwagenboerse?keyword=golf&PRICE_TO=5000`
+- `__NEXT_DATA__` contains full search results under `props.pageProps.searchResult`
+- Pagination: `?page=2`, `?rows=30`
+
+---
+
 ## Marktplatz Search API (Server-Side Filters)
 
 > Discovered via Chrome DevTools MCP — 2026-05-14

@@ -162,11 +162,68 @@ Auth uses `@steipete/sweet-cookie` which reads Chrome's cookie DB directly.
 
 For adding new commands, see **[`DEVGUIDE.md`](DEVGUIDE.md)** — covers API reverse engineering via Chrome DevTools MCP, auth levels, and the full command-building workflow.
 
+## Viewing Images (for Visual Agents)
+
+### ⚠️ Always use CLI + `read` tool — never Chrome DevTools MCP
+
+When an agent needs to **visually inspect** listing photos (e.g., assess condition of a phone, check damage, compare items), the correct workflow is:
+
+```bash
+# Step 1: Download all images for a listing to disk
+whcli images <adId> --dir /tmp/photos --download
+
+# Output: JSON with downloaded file paths
+# { "adId": "2097858592", "count": 6, "files": ["/tmp/photos/2097858592_000_main.jpg", ...] }
+```
+
+Then use the **`read` tool** on each file to view it as an image attachment:
+```
+read(/tmp/photos/2097858592_000_main.jpg)  → shows image to visual model
+read(/tmp/photos/2097858592_001_main.jpg)  → next photo
+```
+
+**Why not Chrome DevTools MCP?**
+- Screenshots are slow (requires browser navigation per listing)
+- Only shows 1 image at a time (the gallery carousel)
+- Adds unnecessary complexity and latency
+- The CLI downloads all images in one call, then `read` is instant
+
+### Available image commands
+
+| Command | Description |
+|---------|-------------|
+| `view <adId> --images` | Get 1 preview image URL (JSON) |
+| `view <adId> --all-images` | Get all image URLs as JSON array |
+| `images <adId>` | List all image URLs + count (JSON) |
+| `images <adId> --dir <path> --download` | **Download all images to disk** (recommended for visual inspection) |
+| `images <adId> --dir <path> --open` | Download + open in default app |
+
+### Example: Visually compare 3 phone listings
+
+```bash
+# Download photos for all 3 listings
+for id in 2097858592 1044443639 1312808742; do
+  whcli images $id --dir /tmp/phones --download
+done
+
+# Then use the `read` tool on each file:
+#   read("/tmp/phones/2097858592_000_main.jpg")  → image #1 of listing 1
+#   read("/tmp/phones/2097858592_001_main.jpg")  → image #2 of listing 1
+#   read("/tmp/phones/1044443639_000_main.jpg")  → image #1 of listing 2
+#   ...
+```
+
+### Tips for visual inspection
+- **2 images per item** is usually enough to judge condition (front + back)
+- Check for: screen cracks, body dents, scratches, missing parts, original packaging
+- Compare price-to-condition ratio across listings
+- File naming: `{adId}_{NNN}_{label}.jpg` — NNN is zero-padded index
+
 ## Image CDN
 
 Images are **fully public** — no auth needed. URL schema documented in `api.md`.
 
 ```bash
-# Download a single image
+# Download a single image (manual fallback)
 curl -sL --compressed "<image_url>" -H "Referer: https://www.willhaben.at/" -o photo.jpg
 ```

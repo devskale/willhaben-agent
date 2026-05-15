@@ -17,6 +17,8 @@ pnpm start -- search "iphone 15"
 | `view <adId>` | Get listing details |
 | `view <adId> --images` | Get 1 preview image URL |
 | `view <adId> --all-images` | Get all image URLs |
+| `images <adId>` | List/download listing images |
+| `images <adId> --dir <path> --download` | Download all photos to disk |
 | `seller <userId>` | Get seller info |
 | `auth` | Check authentication status |
 | `tree [id]` | Browse category tree |
@@ -48,8 +50,13 @@ whcli search "pixel" --category 2722 --sort price-asc --max-price 200 --text
 whcli search "boot kabine" --category 5007823 --private --sort price-asc --text
 
 # View images
-whcli view 1909835075 --images          # 1 preview
-whcli view 1909835075 --all-images      # all photos
+whcli view 1909835075 --images          # 1 preview URL
+whcli view 1909835075 --all-images      # all image URLs
+
+# Download images to disk (for visual inspection)
+whcli images 1909835075 --dir ./photos --download
+# → downloads all images, returns JSON with file paths
+# → then use `read` tool on each .jpg file to view visually
 
 # Category browsing
 whcli tree                              # Root categories

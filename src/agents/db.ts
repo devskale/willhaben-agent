@@ -482,6 +482,286 @@ export function seedCategories(): void {
   insertMany(cats);
 }
 
+// --- Vehicle Categories ---
+// Stores vehicle sub-verticals (auto, motorrad, etc.) and their filter categories
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS vehicle_subverticals (
+      search_id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      product_id INTEGER NOT NULL,
+      ad_type_id INTEGER NOT NULL,
+      url_path TEXT NOT NULL,
+      count INTEGER DEFAULT 0,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+} catch {
+  // Table might already exist
+}
+
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS vehicle_filter_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      subvertical_search_id INTEGER NOT NULL,
+      filter_name TEXT NOT NULL,
+      code TEXT NOT NULL,
+      label TEXT NOT NULL,
+      count INTEGER DEFAULT 0,
+      FOREIGN KEY (subvertical_search_id) REFERENCES vehicle_subverticals(search_id)
+    )
+  `);
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_vfc_unique
+    ON vehicle_filter_categories(subvertical_search_id, filter_name, code)
+  `);
+} catch {
+  // Table might already exist
+}
+
+const stmtInsertSubvertical = db.prepare(
+  'INSERT OR REPLACE INTO vehicle_subverticals (search_id, name, slug, product_id, ad_type_id, url_path, count, updated_at) VALUES (@searchId, @name, @slug, @productId, @adTypeId, @urlPath, @count, CURRENT_TIMESTAMP)'
+);
+
+const stmtInsertFilterCategory = db.prepare(
+  'INSERT OR REPLACE INTO vehicle_filter_categories (subvertical_search_id, filter_name, code, label, count) VALUES (@subverticalSearchId, @filterName, @code, @label, @count)'
+);
+
+const stmtGetSubverticals = db.prepare(
+  'SELECT search_id, name, slug, product_id, ad_type_id, url_path, count FROM vehicle_subverticals ORDER BY count DESC'
+);
+
+const stmtGetFilterCategories = db.prepare(
+  'SELECT filter_name, code, label, count FROM vehicle_filter_categories WHERE subvertical_search_id = ? AND filter_name = ? ORDER BY count DESC'
+);
+
+const stmtCountSubverticals = db.prepare('SELECT COUNT(*) as count FROM vehicle_subverticals');
+
+export interface VehicleSubvertical {
+  searchId: number;
+  name: string;
+  slug: string;
+  productId: number;
+  adTypeId: number;
+  urlPath: string;
+  count: number;
+}
+
+export interface VehicleFilterCategory {
+  filterName: string;
+  code: string;
+  label: string;
+  count: number;
+}
+
+export function getVehicleSubverticals(): VehicleSubvertical[] {
+  return (stmtGetSubverticals.all() as any[]).map(row => ({
+    searchId: row.search_id,
+    name: row.name,
+    slug: row.slug,
+    productId: row.product_id,
+    adTypeId: row.ad_type_id,
+    urlPath: row.url_path,
+    count: row.count,
+  }));
+}
+
+export function getVehicleFilterCategories(searchId: number, filterName: string): VehicleFilterCategory[] {
+  return (stmtGetFilterCategories.all(searchId, filterName) as any[]).map(row => ({
+    filterName: row.filter_name,
+    code: row.code,
+    label: row.label,
+    count: row.count,
+  }));
+}
+
+export function seedVehicleCategories(): void {
+  const count = (stmtCountSubverticals.get() as any)?.count || 0;
+  if (count > 0) return; // Already seeded
+
+  const insertAll = db.transaction(() => {
+    // Sub-verticals
+    const subverticals = [
+      { searchId: 2, name: 'Gebrauchtwagen', slug: 'auto', productId: 40020, adTypeId: 20, urlPath: 'gebrauchtwagen/auto', count: 147785 },
+      { searchId: 4, name: 'Motorrad / Quad', slug: 'motorrad', productId: 40021, adTypeId: 21, urlPath: 'gebrauchtwagen/motorrad', count: 40455 },
+      { searchId: 50, name: 'Nutzfahrzeug / Pickup', slug: 'nutzfahrzeug', productId: 40025, adTypeId: 25, urlPath: 'gebrauchtwagen/nutzfahrzeuge/nutzfahrzeugboerse', count: 13086 },
+      { searchId: 52, name: 'Wohnwagen / Wohnmobile', slug: 'wohnwagen', productId: 40026, adTypeId: 26, urlPath: 'gebrauchtwagen/wohnwagen-wohnmobile/wohnwagenboerse', count: 3869 },
+    ];
+    for (const sv of subverticals) {
+      stmtInsertSubvertical.run(sv);
+    }
+
+    // Motorrad categories (MC_CATEGORY)
+    const motoCategories = [
+      { code: '20', label: 'Chopper / Cruiser', count: 0 },
+      { code: '18', label: 'Naked Bike', count: 0 },
+      { code: '25', label: 'Supersport', count: 0 },
+      { code: '12', label: 'Tourer', count: 0 },
+      { code: '1', label: 'Quad', count: 0 },
+      { code: '8', label: 'Roller / Scooter', count: 0 },
+      { code: '24', label: 'Supermoto', count: 0 },
+      { code: '3', label: 'Enduro', count: 0 },
+      { code: '19', label: 'Cafe Racer', count: 0 },
+      { code: '11', label: 'Rennsport / Rennstrecke', count: 0 },
+    ];
+    for (const cat of motoCategories) {
+      stmtInsertFilterCategory.run({
+        subverticalSearchId: 4,
+        filterName: 'MC_CATEGORY',
+        code: cat.code,
+        label: cat.label,
+        count: cat.count,
+      });
+    }
+
+    // Auto body types (CAR_TYPE)
+    const autoBodyTypes = [
+      { code: 'Klein-/ Kompaktwagen', label: 'Klein-/ Kompaktwagen', count: 0 },
+      { code: 'Kombi / Family Van', label: 'Kombi / Family Van', count: 0 },
+      { code: 'Sportwagen / Coupé', label: 'Sportwagen / Coupé', count: 0 },
+      { code: 'Cabrio / Roadster', label: 'Cabrio / Roadster', count: 0 },
+      { code: 'SUV / Geländewagen', label: 'SUV / Geländewagen', count: 0 },
+      { code: 'Van / Minibus', label: 'Van / Minibus', count: 0 },
+      { code: 'Limousine', label: 'Limousine', count: 0 },
+    ];
+    for (const bt of autoBodyTypes) {
+      stmtInsertFilterCategory.run({
+        subverticalSearchId: 2,
+        filterName: 'CAR_TYPE',
+        code: bt.code,
+        label: bt.label,
+        count: bt.count,
+      });
+    }
+
+    // Fuel types (shared across auto + moto + nutzfahrzeug)
+    const fuelTypes = [
+      { code: '100003', label: 'Diesel' },
+      { code: '100004', label: 'Benzin' },
+      { code: '100008', label: 'Elektro' },
+      { code: '100009', label: 'Hybrid' },
+      { code: '100010', label: 'Erdgas (CNG)' },
+      { code: '100011', label: 'Autogas (LPG)' },
+      { code: '100001', label: 'Benzin (Motorrad)' },
+    ];
+    for (const fuel of fuelTypes) {
+      for (const searchId of [2, 4, 50]) {
+        stmtInsertFilterCategory.run({
+          subverticalSearchId: searchId,
+          filterName: 'ENGINE/FUEL',
+          code: fuel.code,
+          label: fuel.label,
+          count: 0,
+        });
+      }
+    }
+
+    // Transmission types
+    const transmissionTypes = [
+      { code: '180001', label: 'Schaltgetriebe' },
+      { code: '180002', label: 'Automatik' },
+    ];
+    for (const tr of transmissionTypes) {
+      for (const searchId of [2, 50]) {
+        stmtInsertFilterCategory.run({
+          subverticalSearchId: searchId,
+          filterName: 'TRANSMISSION',
+          code: tr.code,
+          label: tr.label,
+          count: 0,
+        });
+      }
+    }
+
+    // Wohnwagen segments
+    const caravanSegments = [
+      { code: '1', label: 'Wohnwagen' },
+      { code: '2', label: 'Wohnmobil' },
+    ];
+    for (const seg of caravanSegments) {
+      stmtInsertFilterCategory.run({
+        subverticalSearchId: 52,
+        filterName: 'CARAVAN_SEGMENT',
+        code: seg.code,
+        label: seg.label,
+        count: 0,
+      });
+    }
+
+    // Nutzfahrzeug segments
+    const vanSegments = [
+      { code: 'Transporter / Kastenwagen', label: 'Transporter / Kastenwagen' },
+      { code: 'Pickup', label: 'Pickup' },
+      { code: 'LKW', label: 'LKW' },
+    ];
+    for (const vs of vanSegments) {
+      stmtInsertFilterCategory.run({
+        subverticalSearchId: 50,
+        filterName: 'VAN_SEGMENT',
+        code: vs.code,
+        label: vs.label,
+        count: 0,
+      });
+    }
+  });
+
+  insertAll();
+}
+
+export function resolveVehicleFilter(searchId: number, filterName: string, query: string): VehicleFilterCategory | null {
+  // Normalize query: lowercase, trim, strip diacritics for fuzzy matching
+  const normalized = query.toLowerCase().trim();
+  
+  // Get all categories for this filter
+  const all = getVehicleFilterCategories(searchId, filterName);
+  
+  // Exact match first (code or label)
+  const exact = all.find(c => c.code.toLowerCase() === normalized || c.label.toLowerCase() === normalized);
+  if (exact) return exact;
+  
+  // Partial match: query is contained in label
+  const partial = all.find(c => c.label.toLowerCase().includes(normalized));
+  if (partial) return partial;
+  
+  // Reverse: label contains query words
+  const words = normalized.split(/\s+/);
+  const wordMatch = all.find(c => {
+    const lower = c.label.toLowerCase();
+    return words.every(w => lower.includes(w));
+  });
+  if (wordMatch) return wordMatch;
+  
+  return null;
+}
+
+/** Resolve a subvertical by slug or name (e.g. "moto", "motorrad", "auto") */
+export function resolveVehicleSubvertical(query: string): VehicleSubvertical | null {
+  const all = getVehicleSubverticals();
+  const normalized = query.toLowerCase().trim();
+  
+  // Exact slug match
+  const bySlug = all.find(sv => sv.slug === normalized);
+  if (bySlug) return bySlug;
+  
+  // Partial name match
+  const byName = all.find(sv => sv.name.toLowerCase().includes(normalized) || normalized.includes(sv.name.toLowerCase()));
+  if (byName) return byName;
+  
+  // Alias matches
+  const aliases: Record<string, number> = {
+    'auto': 2, 'car': 2, 'gebrauchtwagen': 2, 'pkw': 2,
+    'moto': 4, 'motorrad': 4, 'motorbike': 4, 'bike': 4, 'motorräder': 4, 'quad': 4,
+    'van': 50, 'nutzfahrzeug': 50, 'lkw': 50, 'pickup': 50, 'transporter': 50,
+    'wohnwagen': 52, 'wohnmobil': 52, 'caravan': 52, 'wohnmobile': 52, 'camping': 52,
+  };
+  const searchId = aliases[normalized];
+  if (searchId) return all.find(sv => sv.searchId === searchId) || null;
+  
+  return null;
+}
+
 // --- Wishlist ---
 
 export interface WishlistItem {
