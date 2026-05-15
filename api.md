@@ -73,7 +73,7 @@ Willhaben uses **three distinct API domains**:
 | Listing details | Scrape HTML → parse `__NEXT_DATA__` | `publicapi/atdetail/v1/{id}` (clean JSON) |
 | Seller info | `publicapi/userprofile/trust-signals/{id}` | ✅ already using this |
 | Category tree | Scrape HTML → parse `__NEXT_DATA__` | `api/restapi/v2/categorytree/{id}` |
-| Recommendations | Not implemented | `api/restapi/v2/recommendation/search/{adId}/{orgId}` |
+| Recommendations | ✅ `whcli similar` | `api/restapi/v2/recommendation/search/{adId}/{orgId}` + `webapi/cdc/recommendation/{uuid}` + `webapi/cdc/lastviewedads` |
 | Messaging | `webapi/iad-messaging/sendrequest/chat` | ✅ already using this |
 | Chat/Conversations | `webapi/chat-api/v1/conversations` | ✅ already using this |
 | Dealer profiles | Not implemented | `api/restapi/v2/dealerprofile/{orgId}` |
@@ -350,6 +350,69 @@ Returns "similar listings" (Ähnliche Anzeigen) for a given ad. Response shape m
   "advertSummaryList": { "advertSummary": [...] }
 }
 ```
+
+**Status:** ✅ Implemented in whcli (`whcli similar <adId>`)
+
+#### CDC Personalized Recommendations (User Profile-based)
+
+```
+GET https://www.willhaben.at/webapi/cdc/recommendation/{uuid}
+```
+
+**Example:** `https://www.willhaben.at/webapi/cdc/recommendation/c63ac9e7-d1dc-4d12-9245-b80186fc3b9f`
+
+Returns **personalized** recommendations based on user's browsing history and DMP segments. The `{uuid}` is a session/profile identifier.
+
+**Auth:** Requires `x-bbx-csrf-token` header + authenticated cookies.
+
+**Response structure:**
+```json
+{
+  "ads": [
+    {
+      "id": 2118987181,
+      "description": "Jeanneau Sun 2000",
+      "adTypeId": 67,
+      "productId": 99100,
+      "verticalId": 5,
+      "advertImageList": [{ "mainImageUrl": "https://cache.willhaben.at/mmo/..." }],
+      "attributes": [
+        { "name": "PRICE", "values": ["13000"] },
+        { "name": "PRICE_FOR_DISPLAY", "values": ["€ 13.000"] },
+        { "name": "LOCATION", "values": ["Rust"] },
+        { "name": "POSTCODE", "values": ["7071"] },
+        { "name": "SEO_URL", "values": ["kaufen-und-verkaufen/d/jeanneau-sun-2000-2118987181/"] },
+        { "name": "PUBLISHED", "values": ["1777921860000"] },
+        { "name": "CHANGED", "values": ["1777921860000"] }
+      ]
+    }
+  ]
+}
+```
+
+**Note:** Results are based on **user browsing behavior**, NOT content similarity. A Pixel 4a listing may show boats/LEGO if the user previously browsed those categories.
+
+**Status:** 🆕 Not yet implemented in whcli
+
+#### Recently Viewed Ads ("Zuletzt angesehen")
+
+```
+POST https://www.willhaben.at/webapi/cdc/lastviewedads?verticalId={verticalId}&currentAdId={adId}
+```
+
+**Auth:** Requires `x-bbx-csrf-token` + authenticated cookies.
+
+**Request body:**
+```json
+{
+  "adListV2": [
+    {"adId": 2097858592, "viewed": 1778871472846},
+    {"adId": 1044443639, "viewed": 1778867326594}
+  ]
+}
+```
+
+**Response:** Same shape as CDC recommendations (`{ "ads": [...] }`). Returns the ads the user previously viewed, formatted as cards for the "Zuletzt angesehen" section.
 
 **Status:** 🆕 Not yet implemented in whcli
 
@@ -1081,7 +1144,9 @@ Priority order for upgrading whcli from HTML scraping to proper API calls:
 | 🔴 High | Replace `searchItems()` HTML scrape → `webapi/ad-search/search/atz/` | Eliminates cheerio dependency for search, faster, cleaner JSON |
 | 🔴 High | Replace `getListingDetails()` HTML scrape → `publicapi/atdetail/v1/{id}` | Same benefits, no auth needed for public data |
 | 🟡 Medium | Add `getDealerProfile(orgId)` → `api/restapi/v2/dealerprofile/{orgId}` | New feature |
-| 🟡 Medium | Add `getRecommendations(adId)` → `api/restapi/v2/recommendation/search/...` | New feature |
+| 🟡 Medium | Add `getRecommendations(adId)` → `api/restapi/v2/recommendation/search/...` | ✅ Done (`whcli similar`) |
+| 🟡 Medium | Add CDC personalized recs → `webapi/cdc/recommendation/{uuid}` | New feature |
+| 🟡 Medium | Add recently viewed → `webapi/cdc/lastviewedads` | New feature |
 | 🟡 Medium | Replace `getCategoryTree()` HTML scrape → `api/restapi/v2/categorytree/{id}` | Cleaner category data |
 | 🟢 Low | Add `searchByDealer(orgId)` → `api/restapi/v2/search/atz/...?orgId=` | Niche feature |
 | 🟢 Low | Migrate favorites from local SQLite → `api/restapi/v2/userfolders/...` | Cloud sync capability |
