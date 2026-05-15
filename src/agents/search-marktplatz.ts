@@ -541,6 +541,9 @@ export const getListingDetails = async (adId: string) => {
     attributes,
     phone: attributes["PHONE"]?.[0],
     views: undefined,
+    verticalId: adData.verticalId,
+    productId: adData.productId,
+    adTypeId: adData.adTypeId,
   };
 };
 

@@ -35,6 +35,9 @@ import {
 import { sendMessage, getConversations, getMessages } from "./agents/messaging.js";
 import { downloadMerkliste, itemsToCSV } from "./agents/merkliste.js";
 import { searchVehicles } from "./agents/search-vehicles.js";
+import { getSimilarListings } from "./agents/similar.js";
+import { getItemSimilarListings } from "./agents/similar-item.js";
+import { findSimilarProducts } from "./agents/similar-product.js";
 import {
   filterByType,
   filterBySize,
@@ -56,6 +59,8 @@ const COMMANDS = {
   moto: "Search motorrad/quad: whcli moto [keyword] [--type enduro] [--max-price 3000]",
   van: "Search nutzfahrzeug/pickup: whcli van [keyword] [--max-price 10000]",
   caravan: "Search wohnwagen/wohnmobil: whcli caravan [keyword] [--max-price 20000]",
+  similar: "Find similar listings: whcli similar <adId | product name> [--item] [--cheaper]",
+  'similar-items': "(deprecated) Use: whcli similar <product> --item",
   tree: "Browse category tree (optional: category ID to drill down)",
   wishlist: "Manage search wishlist (list / add / remove / toggle)",
   locations: "List Austrian states (Bundesländer) for location filtering",
@@ -706,6 +711,152 @@ async function cmdVehicleSearch(
   }
 }
 
+// ─── Similar Listings ─────────────────────────────────────────────────────
+
+async function cmdSimilar(positional: string[], flags: Record<string, string | boolean>, format: OutputFormat) {
+  const input = positional[0];
+  if (!input) {
+    output({ error: "Usage: whcli similar <adId | 'product name'> [--item]\nExamples:\n  whcli similar 2097858592       # seller-based (same seller)\n  whcli similar 'pixel 4a'     # item-based (similar products)\n  whcli similar 'iphone 13' --cheaper  # cheaper alternatives" }, format);
+    process.exit(1);
+  }
+
+  const rows = typeof flags.rows === "string" ? parseInt(flags.rows, 10) : 15;
+
+  // Detect: all digits → adId, otherwise → product query
+  const isAdId = /^\d+$/.test(input);
+
+  if (isAdId) {
+    // AdId → seller-based or item-based similarity
+    if (flags.item) {
+      await cmdSimilarItems(positional, flags, format);
+    } else {
+      await cmdSellerSimilar(input, rows, format);
+    }
+  } else {
+    // Product query → find similar products
+    await cmdProductSimilar(input, rows, flags, format);
+  }
+}
+
+async function cmdSellerSimilar(adId: string, rows: number, format: OutputFormat) {
+  try {
+    const result = await getSimilarListings(adId, rows);
+
+    if (format === "text") {
+      console.log(`\n🔗  ${result.heading} für ${adId}  —  ${result.totalFound} Treffer (seller-based)\n`);
+      console.log(`   Original: https://www.willhaben.at/iad/object?adId=${adId}\n`);
+
+      if (result.items.length === 0) {
+        console.log("   Keine ähnlichen Anzeigen gefunden.\n");
+        return;
+      }
+
+      for (let i = 0; i < result.items.length; i++) {
+        const item = result.items[i];
+        const priv = item.location ? "" : "🏢 ";
+        const img = item.imageUrl ? "  📷" : "";
+        console.log(`  ${i + 1}. ${item.priceText.padEnd(12)} ${priv}${item.title}`);
+        console.log(`     📍 ${item.location || "?"}${img}`);
+        console.log(`     ${item.url}`);
+        console.log();
+      }
+      return;
+    }
+
+    output(result, format);
+  } catch (e) {
+    output({ error: e instanceof Error ? e.message : "Failed to get similar listings" }, format);
+    process.exit(1);
+  }
+}
+
+async function cmdProductSimilar(query: string, rows: number, flags: Record<string, string | boolean>, format: OutputFormat) {
+  try {
+    const result = await findSimilarProducts(query, rows);
+
+    // --cheaper flag: only show items cheaper than median
+    let items = result.items;
+    if (flags.cheaper && result.medianPrice) {
+      items = items.filter(i => i.price !== null && i.price < result.medianPrice!);
+    }
+
+    if (format === "text") {
+      console.log(`\n🔍  Similar to "${query}"\n`);
+      console.log(`   Found ${result.referenceCount} references, median price: ${result.medianPrice ? `€${result.medianPrice}` : 'unknown'}`);
+      if (flags.cheaper && result.medianPrice) {
+        console.log(`   Filter: cheaper than €${result.medianPrice}`);
+      }
+      console.log();
+
+      if (items.length === 0) {
+        console.log("   No similar products found.\n");
+        return;
+      }
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const diff = item.priceDiff !== null
+          ? (item.priceDiff > 0 ? ` (+€${item.priceDiff})` : ` (-€${Math.abs(item.priceDiff)})`)
+          : '';
+        const img = item.imageUrl ? '📷' : '  ';
+        const priv = item.reason.includes('private') ? '👤' : '  ';
+        console.log(`  ${i + 1}. ${`🎯${item.score}`.padEnd(6)} ${item.priceText.padEnd(12)} ${item.title}${diff}`);
+        console.log(`     ${priv} 📍 ${item.location || "?"}  ${img}  ${item.reason}`);
+        console.log(`     ${item.url}`);
+        console.log();
+      }
+      return;
+    }
+
+    output({ ...result, items }, format);
+  } catch (e) {
+    output({ error: e instanceof Error ? e.message : "Failed to find similar products" }, format);
+    process.exit(1);
+  }
+}
+
+async function cmdSimilarItems(positional: string[], flags: Record<string, string | boolean>, format: OutputFormat) {
+  const adId = positional[0];
+  if (!adId) {
+    output({ error: "Missing ad ID. Usage: whcli similar <adId> --item" }, format);
+    process.exit(1);
+  }
+
+  const rows = typeof flags.rows === "string" ? parseInt(flags.rows, 10) : 10;
+
+  try {
+    const result = await getItemSimilarListings(adId, rows);
+
+    if (format === "text") {
+      console.log(`\n🔍  Item-based similar listings für #${adId}\n`);
+      console.log(`   Source: ${result.sourceTitle} — ${result.sourcePrice !== null ? `€${result.sourcePrice}` : 'no price'}`);
+      console.log(`   Strategy: ${result.searchStrategy}\n`);
+
+      if (result.items.length === 0) {
+        console.log("   Keine ähnlichen Anzeigen gefunden.\n");
+        return;
+      }
+
+      for (let i = 0; i < result.items.length; i++) {
+        const item = result.items[i];
+        const diff = item.priceDiff !== null ? (item.priceDiff > 0 ? ` (+€${item.priceDiff})` : ` (-€${Math.abs(item.priceDiff)})`) : '';
+        const img = item.imageUrl ? '  📷' : '';
+        const score = `🎯${item.score}`.padEnd(6);
+        console.log(`  ${i + 1}. ${score} ${item.priceText.padEnd(12)} ${item.title}${diff}`);
+        console.log(`     📍 ${item.location || "?"}${img}`);
+        console.log(`     ${item.url}`);
+        console.log();
+      }
+      return;
+    }
+
+    output(result, format);
+  } catch (e) {
+    output({ error: e instanceof Error ? e.message : "Failed to get item-similar listings" }, format);
+    process.exit(1);
+  }
+}
+
 async function cmdTree(positional: string[], flags: Record<string, string | boolean>, format: OutputFormat) {
   const categoryId = positional[0];
   const keyword = typeof flags.keyword === "string" ? flags.keyword : undefined;
@@ -955,6 +1106,8 @@ const PUBLIC_COMMANDS = new Set([
   'moto',
   'van',
   'caravan',
+  'similar',
+  'similar-items',
   'tree',
   'locations',
   'view',
@@ -1033,6 +1186,12 @@ async function main() {
     case 'van':
     case 'caravan':
       await cmdVehicleSearch(command, positional, flags, format);
+      break;
+    case 'similar':
+      await cmdSimilar(positional, flags, format);
+      break;
+    case 'similar-items':
+      await cmdSimilarItems(positional, flags, format);
       break;
     case 'tree':
       await cmdTree(positional, flags, format);
