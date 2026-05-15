@@ -43,6 +43,8 @@ import {
 import * as fs from "fs";
 import * as path from "path";
 
+const VERSION = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "..", "package.json"), "utf-8")).version;
+
 const COMMANDS = {
   search: "Search for listings (returns items + categories)",
   tree: "Browse category tree (optional: category ID to drill down)",
@@ -60,6 +62,7 @@ const COMMANDS = {
   history: "Show search history",
   overview: "Immo overview: stats by district/area for Mietwohnung, Eigentumswohnung, Haus",
   help: "Show this help",
+  version: "Show version",
 };
 
 type OutputFormat = "json" | "text";
@@ -848,6 +851,13 @@ async function main() {
   seedRegions();
 
   const args = process.argv.slice(2);
+
+  // Handle -v / --version early (before full parse, since they're flags not commands)
+  if (args.includes('-v') || args.includes('--version')) {
+    console.log(`whcli v${VERSION}`);
+    process.exit(0);
+  }
+
   const { command, positional, flags } = parseArgs(args);
   const format = getFormat(flags);
 
@@ -910,6 +920,11 @@ async function main() {
     case '--help':
     case '-h':
       cmdHelp(format);
+      break;
+    case 'version':
+    case '-v':
+    case '--version':
+      console.log(`whcli v${VERSION}`);
       break;
     default:
       output({ error: `Unknown command: ${command}. Use 'whcli help' for usage.` }, format);
