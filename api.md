@@ -355,14 +355,55 @@ Returns "similar listings" (Ähnliche Anzeigen) for a given ad. Response shape m
 
 ---
 
-### User Folders (Favorites / Saved Items)
+### User Folders (Favorites / Merkliste / Saved Items)
+
+Manage saved/favorited listings. Two access patterns exist:
+
+#### Pattern 1: REST API (JSON) — CORS restricted
 
 ```
-POST https://api.willhaben.at/restapi/v2/userfolders/remove/{adId}
-GET  https://api.willhaben.at/restapi/v2/userfolders/links/{adId}
+GET  https://api.willhaben.at/restapi/v2/userfolders/{userId}
+POST https://api.willhaben.at/restapi/v2/userfolders/{userId}                    # add folder
+GET  https://api.willhaben.at/restapi/v2/userfolders/{userId}/{folderId}        # get folder
+POST https://api.willhaben.at/restapi/v2/userfolders/{userId}/{folderId}        # add ad to folder
+DELETE https://api.willhaben.at/restapi/v2/userfolders/{userId}/{folderId}      # delete folder
+POST https://api.willhaben.at/restapi/v2/userfolders/remove/{adId}              # remove ad
+GET  https://api.willhaben.at/restapi/v2/userfolders/links/{adId}               # check if saved
+POST https://api.willhaben.at/restapi/v2/userfolders/bulkdelete/folders/{userId}
+POST https://api.willhaben.at/restapi/v2/userfolders/bulkdelete/{userId}/{folderId}
+POST https://api.willhaben.at/restapi/v2/userfolders/bulkmove/{userId}/{newFolderId}
+DELETE https://api.willhaben.at/restapi/v2/userfolders/{userId}/{folderId}/deletedAds
 ```
 
-Manage saved/favorited listings via the official API (currently whcli uses local SQLite).
+**Auth:** session cookies (`checkAuth()`)
+**Format:** JSON
+**Note:** CORS blocks direct browser fetch from `www.willhaben.at`. Works server-side with cookies.
+
+#### Pattern 2: SSR HTML Page (recommended for listing) ✅
+
+```
+GET https://www.willhaben.at/iad/myprofile/myfindings          # page 1 (50 items)
+GET https://www.willhaben.at/iad/myprofile/myfindings?page=2   # page 2+
+```
+
+**Auth:** session cookies + visitor cookies (`checkAuth()` + `getVisitorCookies()`)
+**Format:** HTML (Next.js SSR)
+**Pagination:** 50 items per page. Use `?page=N` for additional pages.
+
+**Parsing:**
+- Split HTML by `data-testid="savedadsitemrow-wrapper-{adId}"`
+- Title: `<h3>` tag inside each segment
+- Price: `€\s*([\d.,]+)` regex
+- Description: `<div class="Box-sc...htvXtX">` contains full description text
+- Location: `<p class="Text-sc...cqeyDH">` contains PLZ + place
+- Date: `(\d{2}\.\d{2}\.(?:\d{4})?\s*-?\s*\d{2}:\d{2})\s*Uhr`
+- Image: `src="(https://cache.willhaben.at/mmo/...)"`
+
+**Total count:** from `__NEXT_DATA__` → `advertFolders[0].advertCount`
+
+**Implemented in:** `src/agents/merkliste.ts`
+
+Discovered: 2026-05 via Chrome DevTools MCP
 
 ---
 
@@ -805,6 +846,12 @@ Tools used:
 - Response body inspection of all `/webapi/` and `/restapi/v2/` endpoints
 
 ### How to Re-discover / Verify
+
+1. Use Chrome DevTools MCP to navigate to the target page
+2. Check `chrome_devtools_list_network_requests` for API calls
+3. Inspect `chrome_devtools_get_network_request` for response format
+4. For SSR pages, check `__NEXT_DATA__` via `chrome_devtools_evaluate_script`
+5. Document findings in `api.md` immediately
 
 ```bash
 # 1. Start Chrome Beta with remote debugging

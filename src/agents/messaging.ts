@@ -170,34 +170,36 @@ export const getMessages = async (
 
   const data = await response.json();
   
-  // Parse messages - structure may vary
-  const messages = (data.messages || data || []).map((m: any): ConversationMessage => ({
-    id: m.id || m.message_id,
-    message: m.message || m.preview || m.content || "",
+  // Parse conversation info
+  const info = data.conversation_info || {};
+  const rawMessages = data.messages || [];
+  const messages: ConversationMessage[] = rawMessages.map((m: any): ConversationMessage => ({
+    id: m.message_id || m.id,
+    message: m.text || m.message || m.preview || "",
     isMine: m.is_mine || m.isMine || false,
     read: m.read || false,
-    timestamp: m.timestamp || m.sent_at,
+    timestamp: m.created_at || m.timestamp || m.sent_at,
     attachmentsCount: m.attachments_count || 0,
   }));
 
   return {
     id: conversationId,
-    adId: data.ad_info?.id,
-    adUuid: data.ad_info?.uuid,
-    adTitle: data.ad_info?.subject || "Unknown",
-    adImageUrl: data.ad_info?.image_url,
-    adPrice: data.ad_info?.price_eur,
-    adStatus: data.ad_info?.status || "unknown",
-    adUrl: data.ad_info?.id 
-      ? `https://www.willhaben.at/iad/object?adId=${data.ad_info.id}` 
+    adId: info.ad_info?.id,
+    adUuid: info.ad_info?.uuid,
+    adTitle: info.ad_info?.subject || "Unknown",
+    adImageUrl: info.ad_info?.image_url,
+    adPrice: info.ad_info?.price_eur,
+    adStatus: info.ad_info?.status || "unknown",
+    adUrl: info.ad_info?.id 
+      ? `https://www.willhaben.at/iad/object?adId=${info.ad_info.id}` 
       : undefined,
-    partnerName: data.participant_info?.name || "Unknown",
-    partnerId: data.participant_info?.id,
-    partnerAvatar: data.participant_info?.avatar_url,
-    unseen: data.unseen || 0,
-    totalMessages: data.total_messages_count || messages.length,
-    createdAt: data.created_at,
-    updatedAt: data.updated_at,
+    partnerName: info.participant_info?.name || "Unknown",
+    partnerId: info.participant_info?.id,
+    partnerAvatar: info.participant_info?.avatar_url,
+    unseen: info.unseen || 0,
+    totalMessages: info.total_messages_count || messages.length,
+    createdAt: info.created_at,
+    updatedAt: info.updated_at,
     messages,
   };
 };

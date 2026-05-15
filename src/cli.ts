@@ -29,6 +29,7 @@ import {
   seedRegions,
 } from "./agents/db.js";
 import { sendMessage, getConversations, getMessages } from "./agents/messaging.js";
+import { downloadMerkliste, itemsToCSV } from "./agents/merkliste.js";
 import {
   filterByType,
   filterBySize,
@@ -468,6 +469,17 @@ async function cmdFavorites(positional: string[], flags: Record<string, string |
     return;
   }
 
+  if (subcommand === "download") {
+    const items = await downloadMerkliste();
+    const asCSV = flags.csv === true || (typeof flags.csv === 'string');
+    if (asCSV) {
+      console.log(itemsToCSV(items));
+    } else {
+      output(items, format);
+    }
+    return;
+  }
+
   if (subcommand === "add" || subcommand === "remove") {
     const listingJson = flags.data;
     if (typeof listingJson !== "string") {
@@ -783,6 +795,53 @@ function cmdHelp(format: OutputFormat) {
   output(help, format);
 }
 
+// ─── Smart Auth Router ──────────────────────────────────────────────────────
+// Public commands: only need anonymous visitor cookies (no login)
+const PUBLIC_COMMANDS = new Set([
+  'search',
+  'tree',
+  'locations',
+  'view',
+  'images',
+  'analyze',
+  'compare',
+  'seller',
+  'history',
+  'help',
+]);
+
+// Auth-required commands: need a valid user session (sweet-cookie / CDP)
+const AUTH_COMMANDS = new Set([
+  'favorites',   // download/add/remove merkliste
+  'message',     // send message to seller
+  'chats',       // list conversations
+  'wishlist',    // managed locally but conceptually user-scoped
+]);
+
+// Always-allowed (auth is the action itself)
+const PASS_THROUGH = new Set(['auth', 'overview']);
+
+/**
+ * Ensure the user is authenticated for auth-required commands.
+ * Exits with a helpful error message if not.
+ */
+async function requireAuth(command: string, format: OutputFormat, flags: Record<string, string | boolean>): Promise<void> {
+  const { isAuthenticated, user, error } = await checkAuth(flags.cdp === true);
+  if (!isAuthenticated) {
+    output({
+      error: `Command "${command}" requires authentication.`,
+      hint: error?.includes('v20')
+        ? 'Run: whcli auth --cdp'
+        : 'Run: whcli auth  (or: whcli auth --cdp)',
+      detail: error || 'No valid session cookies found',
+    }, format);
+    process.exit(1);
+  }
+  if (format === 'text') {
+    process.stderr.write(`Authenticated as ${user?.name || 'user'}\n`);
+  }
+}
+
 async function main() {
   // Seed reference data (idempotent — skips if already populated)
   seedCategories();
@@ -792,55 +851,64 @@ async function main() {
   const { command, positional, flags } = parseArgs(args);
   const format = getFormat(flags);
 
+  // Store flags for requireAuth access
+  // (no longer needed, flags passed directly)
+
+  // ─── Auth gate ───────────────────────────────────────────────
+  if (AUTH_COMMANDS.has(command)) {
+    await requireAuth(command, format, flags);
+  }
+
+  // ─── Command dispatch ────────────────────────────────────────
   switch (command) {
-    case "search":
+    case 'search':
       await cmdSearch(positional, flags, format);
       break;
-    case "tree":
+    case 'tree':
       await cmdTree(positional, flags, format);
       break;
-    case "locations":
+    case 'locations':
       cmdLocations(format, flags);
       break;
-    case "view":
+    case 'view':
       await cmdView(positional, flags, format);
       break;
-    case "images":
+    case 'images':
       await cmdImages(positional, flags, format);
       break;
-    case "analyze":
+    case 'analyze':
       await cmdAnalyze(positional, flags, format);
       break;
-    case "compare":
+    case 'compare':
       await cmdCompare(positional, flags, format);
       break;
-    case "seller":
+    case 'seller':
       await cmdSeller(positional, flags, format);
       break;
-    case "auth":
+    case 'auth':
       await cmdAuth(flags, format);
       break;
-    case "message":
+    case 'message':
       await cmdMessage(positional, flags, format);
       break;
-    case "chats":
+    case 'chats':
       await cmdChats(positional, flags, format);
       break;
-    case "favorites":
+    case 'favorites':
       await cmdFavorites(positional, flags, format);
       break;
-    case "history":
+    case 'history':
       cmdHistory(format);
       break;
-    case "wishlist":
+    case 'wishlist':
       cmdWishlist(positional, flags, format);
       break;
-    case "overview":
+    case 'overview':
       await cmdOverview(positional, flags, format);
       break;
-    case "help":
-    case "--help":
-    case "-h":
+    case 'help':
+    case '--help':
+    case '-h':
       cmdHelp(format);
       break;
     default:

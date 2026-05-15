@@ -29,7 +29,9 @@ pnpm start -- auth
 | `wishlist remove <id>` | Remove from wishlist |
 | `wishlist toggle <id>` | Activate/deactivate |
 | `locations` | List Austrian states (Bundesländer) |
-| `favorites list` | List starred items |
+| `favorites list` | List local starred items (SQLite) |
+| `favorites download` | Download merkliste from willhaben (all items) |
+| `favorites download --csv` | Download merkliste as CSV |
 | `history` | Show search history with stats |
 | `help` | Show usage |
 
@@ -70,6 +72,10 @@ whcli search "pixel" --location 900 --category 2722
 # Wishlist
 whcli wishlist add "pixel xl" --category 2722 --max-price 100 --notes "Google Photos unlimited"
 whcli wishlist list
+
+# Favorites / Merkliste (auth required)
+whcli favorites download                # JSON, all items
+whcli favorites download --csv > list.csv  # CSV export
 ```
 
 ## Output Format
@@ -91,18 +97,26 @@ Errors: `{ "error": "message" }`
 ```
 willhaben/
 ├── src/
-│   ├── cli.ts              # CLI entry point + command handlers
+│   ├── cli.ts              # CLI entry point + auth router + command dispatch
 │   ├── types.ts            # Shared TypeScript interfaces
 │   ├── agents/
-│   │   ├── auth.ts         # Auth via sweet-cookie (cross-platform)
-│   │   ├── search.ts       # Search, view, images, category tree
+│   │   ├── auth.ts         # Auth via sweet-cookie (getVisitorCookies + checkAuth)
+│   │   ├── search.ts       # Search router (marktplatz + immo)
+│   │   ├── search-marktplatz.ts  # Marktplatz search, view, seller
+│   │   ├── search-immo.ts       # Immobilien search, overview
+│   │   ├── merkliste.ts    # Merkliste download (SSR HTML parsing)
+│   │   ├── messaging.ts    # Chat/messaging API
 │   │   ├── db.ts           # SQLite: favorites, history, wishlist, categories, regions
 │   │   ├── locations.ts    # Bundesland/Bezirk data
-│   │   └── messaging.ts    # Chat/messaging API
+│   │   └── user.ts         # User profile
 │   └── lib/
-│       ├── cdpCookies.ts   # Chrome DevTools Protocol cookie extractor
-│       └── imageUtil.ts    # Generic image downloader
+│       ├── cli-helpers.ts  # Flag parsing, formatters, filter builders
+│       ├── analysis.ts     # Stats, compare, best deals
+│       ├── cdpCookies.ts   # Chrome DevTools Protocol cookie extractor (fallback)
+│       ├── imageUtil.ts    # Generic image downloader
+│       └── price.ts        # Price parsing utilities
 ├── api.md                  # Discovered API endpoints + Image CDN docs
+├── DEVGUIDE.md             # How to add new commands
 ├── package.json
 └── tsconfig.json
 ```
@@ -132,12 +146,21 @@ pnpm run build         # Build to dist/
 pnpm test              # vitest
 ```
 
-## Chrome Cookie Auth
+## Auth & Smart Router
 
-Cross-platform paths (macOS/Windows/Linux):
+Two auth levels, enforced by the router in `cli.ts`:
+
+| Route | Function | Use for |
+|-------|----------|---------|
+| **Public** | `getVisitorCookies()` | search, tree, view, images, seller, locations |
+| **Auth** | `checkAuth()` + `getVisitorCookies()` | favorites, message, chats |
+
+Auth uses `@steipete/sweet-cookie` which reads Chrome's cookie DB directly.
 - Set `CHROME_PROFILE` env var (default: `Default`)
-- `pnpm start -- auth` checks login status
-- `pnpm start -- auth --cdp` uses Chrome DevTools Protocol
+- `whcli auth` checks login status
+- `--cdp` flag available as fallback if sweet-cookie can't read cookies
+
+For adding new commands, see `DEVGUIDE.md`.
 
 ## Image CDN
 
