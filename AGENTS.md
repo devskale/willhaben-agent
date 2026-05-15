@@ -160,7 +160,7 @@ Auth uses `@steipete/sweet-cookie` which reads Chrome's cookie DB directly.
 - `whcli auth` checks login status
 - `--cdp` flag available as fallback if sweet-cookie can't read cookies
 
-For adding new commands, see `DEVGUIDE.md`.
+For adding new commands, see **[`DEVGUIDE.md`](DEVGUIDE.md)** — covers API reverse engineering via Chrome DevTools MCP, auth levels, and the full command-building workflow.
 
 ## Image CDN
 
