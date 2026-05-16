@@ -17,11 +17,7 @@ import {
 } from "../lib/price.js";
 import type { Listing } from "../types.js";
 
-const WH_CLIENT = "api@willhaben.at;responsive_web;server;1.0.0;desktop";
-const UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-
-const BASE_URL = "https://www.willhaben.at";
+import { WH_CLIENT, UA, BASE_URL } from '../lib/constants.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────
 

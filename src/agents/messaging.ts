@@ -1,6 +1,6 @@
 import { checkAuth } from "./auth.js";
 
-const BASE_URL = "https://www.willhaben.at";
+import { BASE_URL } from '../lib/constants.js';
 const MESSAGING_API = `${BASE_URL}/webapi/iad-messaging/sendrequest/chat`;
 const CONVERSATIONS_API = `${BASE_URL}/webapi/chat-api/v1/conversations`;
 

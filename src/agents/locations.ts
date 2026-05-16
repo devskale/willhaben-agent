@@ -2,7 +2,7 @@ import { load } from "cheerio";
 import { checkAuth } from "./auth.js";
 import { getSubRegions } from "./db.js";
 
-const BASE_URL = "https://www.willhaben.at";
+import { BASE_URL } from '../lib/constants.js';
 
 export interface LocationNode {
   id?: number;

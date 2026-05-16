@@ -7,8 +7,7 @@
 
 import { checkAuth, getVisitorCookies, type AuthState } from './auth.js';
 
-const MERKLISTE_URL = 'https://www.willhaben.at/iad/myprofile/myfindings';
-const ITEMS_PER_PAGE = 50;
+import { MERKLISTE_URL, ITEMS_PER_PAGE } from '../lib/constants.js';
 
 export interface MerklisteItem {
   id: string;
