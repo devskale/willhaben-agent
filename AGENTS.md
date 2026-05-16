@@ -33,6 +33,15 @@ pnpm start -- auth
 | `favorites download` | Download merkliste from willhaben (all items) |
 | `favorites download --csv` | Download merkliste as CSV |
 | `history` | Show search history with stats |
+| `car [query]` | Search cars (e.g. `car "golf" --max-price 5000 --text`) |
+| `moto [query]` | Search motorcycles (e.g. `moto "enduro" --max-price 3000`) |
+| `van [query]` | Search vans/SUVs (e.g. `van "transporter"`) |
+| `caravan [query]` | Search caravans/RVs (e.g. `caravan "hymer"`) |
+| `similar <query>` | Find similar products by name (e.g. `similar "pixel 4a"`) |
+| `similar <query> --cheaper` | Only cheaper alternatives |
+| `similar <adId>` | Seller-based similar listings (same seller) |
+| `similar <adId> --item` | Item-based similar listings (same category/brand/price) |
+| `version` / `-v` / `--version` | Show version |
 | `help` | Show usage |
 
 ## Search Flags
@@ -76,6 +85,19 @@ whcli wishlist list
 # Favorites / Merkliste (auth required)
 whcli favorites download                # JSON, all items
 whcli favorites download --csv > list.csv  # CSV export
+
+# Vehicle search (DB-backed categories + fuzzy filter resolution)
+whcli car "golf" --max-price 5000 --text
+whcli moto "enduro" --max-price 3000 --sort price-asc --text
+whcli van "sprinter" --location 900 --text
+whcli caravan "hymer" --text
+
+# Similar / alternative products
+whcli similar "pixel 4a"              # find similar products
+whcli similar "pixel 4a" --cheaper    # only cheaper alternatives
+whcli similar "iphone 13"             # phones competing with iPhone 13
+whcli similar 2097858592              # same seller's other listings
+whcli similar 2097858592 --item       # content-based (same brand/price)
 ```
 
 ## Output Format
@@ -102,11 +124,15 @@ willhaben/
 │   ├── agents/
 │   │   ├── auth.ts         # Auth via sweet-cookie (getVisitorCookies + checkAuth)
 │   │   ├── search.ts       # Search router (marktplatz + immo)
-│   │   ├── search-marktplatz.ts  # Marktplatz search, view, seller
+│   │   ├── search-marktplatz.ts  # Marktplatz search, view, seller, getListingDetails
 │   │   ├── search-immo.ts       # Immobilien search, overview
+│   │   ├── search-vehicles.ts   # Vehicle search (car/moto/van/caravan) — all vertical 3
 │   │   ├── merkliste.ts    # Merkliste download (SSR HTML parsing)
+│   │   ├── similar.ts      # Seller-based similar listings (recommendation API)
+│   │   ├── similar-item.ts # Item-based similarity (search API, multi-strategy scoring)
+│   │   ├── similar-product.ts # Product similarity by name (reference profile + broadened search)
 │   │   ├── messaging.ts    # Chat/messaging API
-│   │   ├── db.ts           # SQLite: favorites, history, wishlist, categories, regions
+│   │   ├── db.ts           # SQLite: favorites, history, wishlist, categories, regions, vehicles
 │   │   ├── locations.ts    # Bundesland/Bezirk data
 │   │   └── user.ts         # User profile
 │   └── lib/
@@ -130,6 +156,8 @@ willhaben/
 | `wishlist` | Search queries to watch (with category, max-price, notes) |
 | `categories` | 3-level hierarchy (root → sub → brand), with counts |
 | `regions` | Bundesländer + Bezirke (area_id, parent_id, name, level) |
+| `vehicle_subverticals` | Maps searchId to sub-vertical (2=auto, 4=moto, 50=van, 52=caravan) |
+| `vehicle_filter_categories` | All vehicle attribute filters (make, model, fuel, etc.) with fuzzy names |
 
 ## Code Style
 

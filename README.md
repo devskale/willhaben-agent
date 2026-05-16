@@ -26,6 +26,15 @@ pnpm start -- search "iphone 15"
 | `locations` | List Austrian states |
 | `favorites list` | List starred items |
 | `history` | Show search history |
+| `car [query]` | Search cars (filters: `--max-price`, `--sort`, `--text`) |
+| `moto [query]` | Search motorcycles |
+| `van [query]` | Search vans/SUVs |
+| `caravan [query]` | Search caravans/RVs |
+| `similar <query>` | Find similar products (e.g. `similar "pixel 4a"`) |
+| `similar <query> --cheaper` | Only cheaper alternatives |
+| `similar <adId>` | Seller-based similar listings |
+| `similar <adId> --item` | Item-based similar listings |
+| `version` / `-v` | Show version |
 
 ## Search Flags
 
@@ -65,6 +74,17 @@ whcli tree 2691 --keyword pixel         # Filtered
 
 # Location + category combo
 whcli search "pixel" --location 900 --category 2722
+
+# Vehicle search
+whcli car "golf" --max-price 5000 --text
+whcli moto "enduro" --max-price 3000 --sort price-asc --text
+whcli van "sprinter" --location 900 --text
+
+# Similar / alternative products
+whcli similar "pixel 4a"              # find similar products
+whcli similar "pixel 4a" --cheaper    # only cheaper alternatives
+whcli similar 2097858592              # same seller's other listings
+whcli similar 2097858592 --item       # content-based (same brand/price)
 ```
 
 ## Auth
