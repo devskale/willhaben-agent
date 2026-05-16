@@ -1,6 +1,6 @@
 {
   "name": "whcli",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "description": "CLI for willhaben.at - agent automation ready",
   "type": "module",
   "bin": {
