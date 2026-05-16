@@ -6,20 +6,7 @@
 - [x] Created `src/lib/constants.ts`, replaced all 7 duplicated files, type-check passes
 
 ### Command extraction
-- [ ] Create `src/commands/shared.ts` (output, parseArgs, getFormat, OutputFormat type)
-- [ ] Create `src/commands/search.ts` (cmdSearch + printSearchTable)
-- [ ] Create `src/commands/view.ts` (cmdView + cmdImages)
-- [ ] Create `src/commands/favorites.ts` (cmdFavorites — all subcommands)
-- [ ] Create `src/commands/vehicles.ts` (cmdVehicleSearch)
-- [ ] Create `src/commands/similar.ts` (cmdSimilar + cmdSellerSimilar + cmdProductSimilar + cmdSimilarItems)
-- [ ] Create `src/commands/analyze.ts` (cmdAnalyze + cmdCompare)
-- [ ] Create `src/commands/overview.ts` (cmdOverview)
-- [ ] Create `src/commands/chats.ts` (cmdMessage + cmdChats)
-- [ ] Create `src/commands/misc.ts` (cmdAuth, cmdSeller, cmdLocations, cmdHistory, cmdWishlist, cmdTree, cmdHelp)
-- [ ] Rewrite `src/cli.ts` as thin dispatcher (~150 lines: imports, auth router, switch)
-- [ ] Type-check passes
-- [ ] Smoke test: search, favorites, vehicles, similar, auth all still work
-- [ ] Commit + push
+- [x] Extracted all cmd* functions into src/commands/ (10 files), rewrote cli.ts as 107-line thin dispatcher, all smoke tests pass
 
 ### Target structure
 ```
