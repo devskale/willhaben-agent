@@ -14,15 +14,19 @@
 
 ---
 
-## P2 — Key tests
+## P2 — Tests (revised)
 
-Tests for the tricky logic — the stuff that's most likely to break silently.
+### What changed
+Original P2 had 5 targets. Reflected and cut to 3 — the ones that catch real bugs, not just mirror implementation details:
+- **Dropped price parsing** — thin wrapper around `@norbulcz/num-parse`, not our bug surface
+- **Dropped vehicle category resolution** — needs real SQLite setup, the DB query is straightforward
+- **Dropped merkliste HTML parsing** — would need snapshot HTML fixtures that rot fast
 
-- [ ] Price parsing (lib/price.ts) — commas, dots, ranges, free items
-- [ ] Search filter building (lib/cli-helpers.ts) — immo vs marktplatz flags
-- [ ] Merkliste HTML parsing — paginate, extract items from SSR HTML
-- [ ] Vehicle category resolution — fuzzy matching in db.ts
-- [ ] Similar product scoring — keyword overlap, price proximity, type match
+### What's left — the real value
+- [ ] **Similar product scoring** (similar-product.ts) — pure functions with edge cases (empty refs, price match, keyword overlap). Easy to test, high regression value.
+- [ ] **Search listing parsing** (search-marktplatz.ts parseListing/parseAttributes) — the core data extraction from raw API JSON. If attributes rename, tests catch it. Already have 6 tests, add more for attribute edge cases.
+- [ ] **Analysis filters** (lib/analysis.ts) — filterByKeyword, excludeByKeyword, filterBySize etc. Pure functions, easy to test, used in search + analyze.
+- [ ] Type-check + all tests pass
 - [ ] Commit + push
 
 ---
@@ -32,3 +36,6 @@ Tests for the tricky logic — the stuff that's most likely to break silently.
 - **DB migrations** — only if we need schema changes. 6 tables doesn't justify a framework.
 - **API response types** — only if the API stabilizes or we document it formally.
 - **`misc.ts` split** — 157 lines with 7 commands. Fine for now, split if it grows.
+- **Price parsing tests** — if we ever replace `@norbulcz/num-parse`.
+- **Merkliste HTML parsing tests** — if we snapshot real HTML and add a CI update job.
+- **Vehicle category tests** — if the fuzzy matching gets more complex.
