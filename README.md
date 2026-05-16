@@ -40,6 +40,8 @@ pnpm start -- search "iphone 15"
 | `similar <query>` | Find similar products (e.g. `similar "pixel 4a"`) |
 | `similar <adId>` | Seller-based similar listings |
 | `similar <adId> --item` | Item-based similar listings |
+| `overview [--location] [--type]` | Immobilien market snapshot (median price, €/m² per district) |
+| `analyze <query> --vertical immobilien` | Real estate analysis (by type, best value, private sellers) |
 | `version` / `-v` | Show version |
 
 ## Search Flags
