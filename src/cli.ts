@@ -18,6 +18,7 @@ import { cmdAnalyze, cmdCompare } from './commands/analyze.js';
 import { cmdOverview } from './commands/overview.js';
 import { cmdMessage, cmdChats } from './commands/chats.js';
 import { cmdAuth, cmdSeller, cmdLocations, cmdHistory, cmdWishlist, cmdTree, cmdHelp } from './commands/misc.js';
+import { getImmoFilters } from './agents/search-immo.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -27,7 +28,7 @@ const VERSION = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, '..', 
 const PUBLIC_COMMANDS = new Set([
   'search', 'car', 'moto', 'van', 'caravan', 'similar', 'similar-items',
   'tree', 'locations', 'view', 'images', 'analyze', 'compare', 'seller',
-  'history', 'help',
+  'history', 'help', 'immo-filters',
 ]);
 
 const AUTH_COMMANDS = new Set([
@@ -90,6 +91,7 @@ async function main() {
     case 'favorites':     return await cmdFavorites(positional, flags, format);
     case 'history':       return cmdHistory(format);
     case 'wishlist':      return cmdWishlist(positional, flags, format);
+    case 'immo-filters':  return await cmdImmoFilters(positional, flags, format);
     case 'overview':      return await cmdOverview(positional, flags, format);
     case 'help':
     case '--help':
@@ -99,6 +101,27 @@ async function main() {
       output({ error: `Unknown command: ${command}. Use 'whcli help' for usage.` }, format);
       process.exit(1);
   }
+}
+
+async function cmdImmoFilters(positional: string[], flags: Record<string, string | boolean>, format: OutputFormat) {
+  const searchId = typeof flags.type === 'string' ? undefined : undefined; // resolve later
+  const typeMap: Record<string, number> = { alle: 90, mietwohnung: 131, eigentumswohnung: 101, haus: 102, miethaus: 132, grundstueck: 14, gewerbe: 15, neubau: 42 };
+  const typeName = typeof flags.type === 'string' ? flags.type.toLowerCase() : 'eigentumswohnung';
+  const sid = typeMap[typeName] || 101;
+  const filters = await getImmoFilters(sid);
+  if (format === 'text') {
+    console.log(`\n📐 Server-side filter: ${typeName} (searchId=${sid})\n`);
+    let lastGroup = '';
+    for (const f of filters) {
+      if (f.group !== lastGroup) { console.log(`  ${f.group}`); lastGroup = f.group; }
+      const param = f.params.join(', ');
+      const sel = f.selectionType === 'MULTI_SELECT' ? 'multi' : 'single';
+      console.log(`    ${f.label.padEnd(16)} ${param.padEnd(35)} [${f.type}] ${sel}`);
+    }
+    console.log();
+    return;
+  }
+  output(filters, format);
 }
 
 main().catch(e => {

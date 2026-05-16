@@ -344,3 +344,63 @@ export const getImmoOverview = async (
 
   return overview;
 };
+
+export interface ImmoFilterSchema {
+  group: string;
+  id: string;
+  label: string;
+  type: string; // STANDARD | RANGE | TEXT_SEARCH
+  selectionType: string; // SINGLE_SELECT | MULTI_SELECT
+  params: string[]; // query param names
+}
+
+/**
+ * Fetch available server-side filters for a given immo searchId.
+ * Returns navigator groups with param names and types — values are populated
+ * client-side by willhaben so we only get the schema, not the options.
+ *
+ * Useful for discovering what filter params are available per property type.
+ */
+export const getImmoFilters = async (
+  searchId: number = 90,
+): Promise<ImmoFilterSchema[]> => {
+  const { headers } = await getPublicHeaders();
+  const resp = await fetch(
+    `https://www.willhaben.at/webapi/iad/search/atz/2/${searchId}?rows=1&isNavigation=true`,
+    { headers },
+  );
+  if (!resp.ok) return [];
+
+  const data = await resp.json() as {
+    navigatorGroups?: Array<{
+      label: string;
+      navigatorList?: Array<{
+        id: string;
+        label: string;
+        navigatorType: string; // STANDARD | RANGE | TEXT_SEARCH
+        navigatorSelectionType: string; // SINGLE_SELECT | MULTI_SELECT
+        possibleValues?: Array<{ id: string; label: string }>;
+        urlConstructionInformation?: {
+          urlParams?: Array<{ urlParameterName: string }>;
+        };
+      }>;
+    }>;
+  };
+
+  const result: ImmoFilterSchema[] = [];
+  for (const group of data.navigatorGroups || []) {
+    for (const nav of group.navigatorList || []) {
+      if (nav.id === 'searchId') continue; // skip internal
+      const params = (nav.urlConstructionInformation?.urlParams || []).map(p => p.urlParameterName);
+      result.push({
+        group: group.label,
+        id: nav.id,
+        label: nav.label,
+        type: nav.navigatorType,
+        selectionType: nav.navigatorSelectionType,
+        params,
+      });
+    }
+  }
+  return result;
+};
