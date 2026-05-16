@@ -19,6 +19,7 @@ import { cmdOverview } from './commands/overview.js';
 import { cmdMessage, cmdChats } from './commands/chats.js';
 import { cmdAuth, cmdSeller, cmdLocations, cmdHistory, cmdWishlist, cmdTree, cmdHelp } from './commands/misc.js';
 import { getImmoFilters } from './agents/search-immo.js';
+import { getVehicleSubverticals } from './agents/search-vehicles.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -28,7 +29,7 @@ const VERSION = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, '..', 
 const PUBLIC_COMMANDS = new Set([
   'search', 'car', 'moto', 'van', 'caravan', 'similar', 'similar-items',
   'tree', 'locations', 'view', 'images', 'analyze', 'compare', 'seller',
-  'history', 'help', 'immo-filters',
+  'history', 'help', 'immo-filters', 'vehicle-filters',
 ]);
 
 const AUTH_COMMANDS = new Set([
@@ -91,7 +92,8 @@ async function main() {
     case 'favorites':     return await cmdFavorites(positional, flags, format);
     case 'history':       return cmdHistory(format);
     case 'wishlist':      return cmdWishlist(positional, flags, format);
-    case 'immo-filters':  return await cmdImmoFilters(positional, flags, format);
+    case 'immo-filters':    return await cmdFilters('immobilien', positional, flags, format);
+    case 'vehicle-filters': return await cmdFilters('vehicle', positional, flags, format);
     case 'overview':      return await cmdOverview(positional, flags, format);
     case 'help':
     case '--help':
@@ -103,26 +105,71 @@ async function main() {
   }
 }
 
-async function cmdImmoFilters(positional: string[], flags: Record<string, string | boolean>, format: OutputFormat) {
-  const searchId = typeof flags.type === 'string' ? undefined : undefined; // resolve later
-  const typeMap: Record<string, number> = { alle: 90, mietwohnung: 131, eigentumswohnung: 101, haus: 102, miethaus: 132, grundstueck: 14, gewerbe: 15, neubau: 42 };
-  const typeName = typeof flags.type === 'string' ? flags.type.toLowerCase() : 'eigentumswohnung';
-  const sid = typeMap[typeName] || 101;
-  const filters = await getImmoFilters(sid);
+async function cmdFilters(vertical: 'immobilien' | 'vehicle', positional: string[], flags: Record<string, string | boolean>, format: OutputFormat) {
+  const typeName = typeof flags.type === 'string' ? flags.type.toLowerCase() : '';
+  let searchId: number;
+  let label: string;
+
+  if (vertical === 'immobilien') {
+    const typeMap: Record<string, number> = { alle: 90, mietwohnung: 131, eigentumswohnung: 101, haus: 102, miethaus: 132, grundstueck: 14, gewerbe: 15, neubau: 42 };
+    searchId = typeMap[typeName] || 101;
+    label = typeName || 'eigentumswohnung';
+  } else {
+    const typeMap: Record<string, number> = { auto: 2, moto: 4, van: 50, caravan: 52 };
+    searchId = typeMap[typeName] || 2;
+    label = typeName || 'auto';
+  }
+
+  const filters = await fetchFilterSchema(vertical, searchId);
   if (format === 'text') {
-    console.log(`\n📐 Server-side filter: ${typeName} (searchId=${sid})\n`);
+    console.log(`\n📐 Server-side filters: ${label} (searchId=${searchId})\n`);
     let lastGroup = '';
     for (const f of filters) {
       if (f.group !== lastGroup) { console.log(`  ${f.group}`); lastGroup = f.group; }
       const param = f.params.join(', ');
       const sel = f.selectionType === 'MULTI_SELECT' ? 'multi' : 'single';
-      console.log(`    ${f.label.padEnd(16)} ${param.padEnd(35)} [${f.type}] ${sel}`);
+      console.log(`    ${f.label.padEnd(20)} ${param.padEnd(38)} [${f.type}] ${sel}`);
     }
     console.log();
     return;
   }
   output(filters, format);
 }
+
+interface FilterSchema { group: string; id: string; label: string; type: string; selectionType: string; params: string[] }
+
+async function fetchFilterSchema(vertical: 'immobilien' | 'vehicle', searchId: number): Promise<FilterSchema[]> {
+  const vId = vertical === 'immobilien' ? 2 : 3;
+  const { headers } = await getPublicHeaders();
+  const resp = await fetch(
+    `https://www.willhaben.at/webapi/ad-search/search/atz/${vId}/${searchId}?rows=1`,
+    { headers },
+  );
+  if (!resp.ok) return [];
+  const data = await resp.json() as {
+    navigatorGroups?: Array<{
+      label: string;
+      navigatorList?: Array<{
+        id: string; label: string; navigatorType: string; navigatorSelectionType: string;
+        urlConstructionInformation?: { urlParams?: Array<{ urlParameterName: string }> };
+      }>;
+    }>;
+  };
+  const result: FilterSchema[] = [];
+  for (const group of data.navigatorGroups || []) {
+    for (const nav of group.navigatorList || []) {
+      if (nav.id === 'searchId' || !nav.label) continue;
+      result.push({
+        group: group.label, id: nav.id, label: nav.label, type: nav.navigatorType,
+        selectionType: nav.navigatorSelectionType,
+        params: (nav.urlConstructionInformation?.urlParams || []).map(p => p.urlParameterName),
+      });
+    }
+  }
+  return result;
+}
+
+import { getPublicHeaders } from './lib/http.js';
 
 main().catch(e => {
   console.error(JSON.stringify({ error: e.message }));

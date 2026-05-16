@@ -43,6 +43,7 @@ pnpm start -- auth
 | `van [query]` | Search vans/SUVs (e.g. `van "transporter"`) |
 | `caravan [query]` | Search caravans/RVs (e.g. `caravan "hymer"`) |
 | `immo-filters [--type <type>]` | List available server-side immo filters (run first to discover params) |
+| `vehicle-filters [--type <type>]` | List available server-side vehicle filters (run first to discover params) |
 | `similar <query>` | Find similar products by name (e.g. `similar "pixel 4a"`) |
 | `similar <adId>` | Seller-based similar listings (same seller) |
 | `similar <adId> --item` | Item-based similar listings (same category/brand/price) |
