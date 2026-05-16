@@ -41,6 +41,9 @@ export async function cmdVehicleSearch(
 
     const sortBy = typeof flags.sort === 'string' ? flags.sort : undefined;
     let items = result.items;
+
+    // Server ignores ISPRIVATE when keyword is set — client-side fallback
+    if (isPrivate) items = items.filter(i => i.isPrivate);
     if (sortBy === 'price-asc') items.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
     else if (sortBy === 'price-desc') items.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
     else if (sortBy === 'newest') items.sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
