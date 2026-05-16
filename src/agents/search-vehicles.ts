@@ -6,7 +6,6 @@
  * like "enduro", "chopper", "elektro", "automatik".
  */
 
-import { getVisitorCookies } from "./auth.js";
 import {
   getVehicleSubverticals,
   resolveVehicleSubvertical,
@@ -15,6 +14,7 @@ import {
 } from "./db.js";
 
 import { WH_CLIENT, UA } from '../lib/constants.js';
+import { getPublicHeaders } from '../lib/http.js';
 const BASE = "https://www.willhaben.at/webapi/ad-search/search/atz/3";
 
 export interface VehicleFilters {
@@ -142,20 +142,13 @@ export async function searchVehicles(
     throw new Error(`Unknown vehicle type "${subverticalQuery}". Available: ${available}`);
   }
 
-  const { csrfToken, cookieHeader } = await getVisitorCookies();
+  const { headers } = await getPublicHeaders();
   const { params, resolved } = await buildVehicleParams(filters, subvertical);
 
   const url = `${BASE}/${subvertical.searchId}/atverz?${params}`;
 
   const resp = await fetch(url, {
-    headers: {
-      "User-Agent": UA,
-      Accept: "application/json",
-      "x-bbx-csrf-token": csrfToken,
-      "x-wh-client": WH_CLIENT,
-      Referer: "https://www.willhaben.at/",
-      Cookie: cookieHeader,
-    },
+    headers,
   });
 
   if (!resp.ok) {

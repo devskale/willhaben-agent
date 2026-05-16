@@ -8,7 +8,7 @@
  * NOT: Immobilien (vertical 2) — that lives in search-immo.ts
  */
 
-import { checkAuth, getVisitorCookies } from "./auth.js";
+import { getPublicHeaders, getHtmlHeaders } from '../lib/http.js';
 import { load } from "cheerio";
 import {
   Listing,
@@ -44,13 +44,6 @@ export const resolveMarktplatzVertical = (v?: string): MarktplatzVertical =>
   MARKTPLATZ_VERTICALS[v || "marktplatz"] || MARKTPLATZ_VERTICALS.marktplatz;
 
 // ─── Shared Helpers ───────────────────────────────────────────────────────
-
-const getHeaders = (cookies: string) => ({
-  "User-Agent": UA,
-  Cookie: cookies,
-  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-  "Accept-Language": "de-AT,de;q=0.9,en;q=0.8",
-});
 
 /** Parse attribute list from JSON API item into a flat map. */
 export const parseApiAttributes = (item: any): Record<string, string> => {
@@ -207,7 +200,7 @@ export const fetchMarktplatzApi = async (
   filters?: MarktplatzFilters,
 ): Promise<{ items: Map<string, Partial<Listing>>; rowsFound: number }> => {
   try {
-    const { csrfToken, cookieHeader } = await getVisitorCookies();
+    const { headers } = await getPublicHeaders();
     const params = buildMarktplatzParams(keyword, rows, page, areaIds, filters);
 
     const url = `https://www.willhaben.at/webapi/ad-search/search/atz/${vertical.vertical}/${vertical.category}/atverz?${params}`;
@@ -217,16 +210,7 @@ export const fetchMarktplatzApi = async (
       // Apply same filters to HTML URL for consistent results
     }
 
-    const resp = await fetch(url, {
-      headers: {
-        "User-Agent": UA,
-        Accept: "application/json",
-        "x-bbx-csrf-token": csrfToken,
-        "x-wh-client": WH_CLIENT,
-        Referer: "https://www.willhaben.at/",
-        Cookie: cookieHeader,
-      },
-    });
+    const resp = await fetch(url, { headers });
 
     if (!resp.ok) return { items: new Map(), rowsFound: 0 };
 
@@ -292,8 +276,7 @@ export const searchMarktplatz = async (
   maxPages: number = 1,
 ): Promise<SearchResult> => {
   const vc = resolveMarktplatzVertical(verticalKey);
-  const { cookies } = await checkAuth();
-  const headers = getHeaders(cookies);
+  const { headers } = await getHtmlHeaders();
 
   let url = `${BASE_URL}/iad/${vc.htmlPath}?keyword=${encodeURIComponent(keyword)}&page=${page}`;
   if (categoryId) url += `&ATTRIBUTE_TREE=${categoryId}`;
@@ -459,8 +442,7 @@ export const getMarktplatzCategoryTree = async (
   categoryId?: string,
   keyword?: string,
 ): Promise<CategoryTree> => {
-  const { cookies } = await checkAuth();
-  const headers = getHeaders(cookies);
+  const { headers } = await getHtmlHeaders();
 
   let url = `${BASE_URL}/iad/kaufen-und-verkaufen/marktplatz?page=1`;
   if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
@@ -499,8 +481,7 @@ export const getMarktplatzCategoryTree = async (
 // ─── Listing Details (shared by both domains) ───────────────────────────
 
 export const getListingDetails = async (adId: string) => {
-  const { cookies } = await checkAuth();
-  const headers = getHeaders(cookies);
+  const { headers } = await getHtmlHeaders();
   const url = `${BASE_URL}/iad/object?adId=${adId}`;
 
   const response = await fetch(url, { headers });
@@ -546,8 +527,7 @@ export const getListingDetails = async (adId: string) => {
 // ─── Seller Info ─────────────────────────────────────────────────────────
 
 export const getSeller = async (userId: string): Promise<Seller> => {
-  const { cookies } = await checkAuth();
-  const headers = getHeaders(cookies);
+  const { headers } = await getHtmlHeaders();
   const url = `https://publicapi.willhaben.at/userprofile/trust-signals/${userId}`;
 
   const response = await fetch(url, { headers });

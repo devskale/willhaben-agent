@@ -5,7 +5,7 @@
  * Gets orgId by searching for the specific adId (faster than detail page).
  */
 
-import { getVisitorCookies } from "./auth.js";
+import { getPublicHeaders } from '../lib/http.js';
 
 import { WH_CLIENT, UA } from '../lib/constants.js';
 
@@ -29,21 +29,12 @@ export interface SimilarListingsResult {
  * Get orgId for an adId by searching for it (fast, uses the same search API).
  */
 async function getOrgId(adId: string): Promise<string | null> {
-  const { csrfToken, cookieHeader } = await getVisitorCookies();
+  const { headers } = await getPublicHeaders();
 
   // Search for this specific adId to get its orgId from search results
-  // Try marktplatz first (most ads are there)
   let url = `https://www.willhaben.at/webapi/ad-search/search/atz/5/301/atverz?rows=3&keyword=${adId}`;
   
-  const resp = await fetch(url, {
-    headers: {
-      "User-Agent": UA,
-      Accept: "application/json",
-      "x-bbx-csrf-token": csrfToken,
-      "x-wh-client": WH_CLIENT,
-      Cookie: cookieHeader,
-    },
-  });
+  const resp = await fetch(url, { headers });
 
   if (!resp.ok) return null;
 
@@ -61,15 +52,7 @@ async function getOrgId(adId: string): Promise<string | null> {
 
   // Fallback: try vehicle vertical
   url = `https://www.willhaben.at/webapi/ad-search/search/atz/3/2/atverz?rows=3&keyword=${adId}`;
-  const resp2 = await fetch(url, {
-    headers: {
-      "User-Agent": UA,
-      Accept: "application/json",
-      "x-bbx-csrf-token": csrfToken,
-      "x-wh-client": WH_CLIENT,
-      Cookie: cookieHeader,
-    },
-  });
+  const resp2 = await fetch(url, { headers });
 
   if (!resp2.ok) return null;
 
@@ -95,7 +78,7 @@ export async function getSimilarListings(
   adId: string,
   rows: number = 10,
 ): Promise<SimilarListingsResult> {
-  const { csrfToken, cookieHeader } = await getVisitorCookies();
+  const { headers: headers2 } = await getPublicHeaders();
 
   // Step 1: Get orgId from the ad
   const orgId = await getOrgId(adId);
@@ -106,22 +89,15 @@ export async function getSimilarListings(
   // Step 2: Call recommendation API
   const url = `https://api.willhaben.at/restapi/v2/recommendation/search/${adId}/${orgId}?absoluteImageUrls=true`;
 
-  const resp = await fetch(url, {
-    headers: {
-      "User-Agent": UA,
-      Accept: "application/json",
-      "x-bbx-csrf-token": csrfToken,
-      "x-wh-client": WH_CLIENT,
-      Referer: "https://www.willhaben.at/",
-      Cookie: cookieHeader,
-    },
+  const resp2 = await fetch(url, {
+    headers: headers2,
   });
 
-  if (!resp.ok) {
-    throw new Error(`Recommendation API failed: ${resp.status} ${resp.statusText}`);
+  if (!resp2.ok) {
+    throw new Error(`Recommendation API failed: ${resp2.status} ${resp2.statusText}`);
   }
 
-  const data = await resp.json() as any;
+  const data = await resp2.json() as any;
   const items = data.advertSummaryList?.advertSummary || [];
 
   const listings: SimilarListing[] = items.map((item: any) => {

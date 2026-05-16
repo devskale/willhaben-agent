@@ -5,9 +5,9 @@
  * parses the SSR HTML, and outputs as CSV or JSON.
  */
 
-import { checkAuth, getVisitorCookies, type AuthState } from './auth.js';
-
+import { checkAuth, getVisitorCookies } from './auth.js';
 import { MERKLISTE_URL, ITEMS_PER_PAGE } from '../lib/constants.js';
+import { getAuthHeaders } from '../lib/http.js';
 
 export interface MerklisteItem {
   id: string;
@@ -189,40 +189,7 @@ export interface RemoveResult {
 /**
  * Build authenticated headers for webapi calls.
  */
-async function getWebapiHeaders(): Promise<{ headers: Record<string, string>; userId: string }> {
-  const { cookies, user } = await checkAuth();
-  if (!user?.id) throw new Error('Not authenticated — no user ID found');
-
-  const { csrfToken, cookieHeader: visitorCookies } = await getVisitorCookies();
-  const allCookies = [cookies, visitorCookies].filter(Boolean).join('; ');
-
-  // Extract CSRF from cookies (prefer the one from sweet-cookie session)
-  const cookieMap = Object.fromEntries(
-    cookies.split(';').map(c => {
-      const [k, ...v] = c.trim().split('=');
-      return [k, v.join('=')];
-    }),
-  );
-  const csrf = cookieMap['x-bbx-csrf-token'] || csrfToken;
-
-  // Extract numeric userId from BBX_JSESSIONID cookie (format: "20759581__<uuid>")
-  const sessionCookie = cookieMap['BBX_JSESSIONID'] || '';
-  const numericUserId = sessionCookie.split('__')[0] || user.id;
-
-  return {
-    headers: {
-      Accept: 'application/json',
-      Cookie: allCookies,
-      'x-bbx-csrf-token': csrf,
-      'x-wh-client': 'api@willhaben.at;responsive_web;server;1.0.0;desktop',
-      'Cache-Control': 'no-cache',
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-      Referer: 'https://www.willhaben.at/',
-      Origin: 'https://www.willhaben.at',
-    },
-    userId: numericUserId,
-  };
-}
+async function getWebapiHeaders() { return getAuthHeaders(); }
 
 /**
  * List all merkliste folders.

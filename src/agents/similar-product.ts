@@ -9,10 +9,10 @@
  * 5. Return ranked list
  */
 
-import { getVisitorCookies } from './auth.js';
 import { searchMarktplatz } from './search-marktplatz.js';
 
 import { WH_CLIENT, UA } from '../lib/constants.js';
+import { getPublicHeaders } from '../lib/http.js';
 
 export interface ProductMatch {
   id: string;
@@ -98,7 +98,7 @@ async function apiSearch(
   priceFrom?: number,
   priceTo?: number,
 ): Promise<any[]> {
-  const { csrfToken, cookieHeader } = await getVisitorCookies();
+  const { headers } = await getPublicHeaders();
 
   const params = new URLSearchParams({
     rows: String(rows),
@@ -111,16 +111,7 @@ async function apiSearch(
 
   const url = `https://www.willhaben.at/webapi/ad-search/search/atz/5/301/atverz?${params}`;
 
-  const resp = await fetch(url, {
-    headers: {
-      'User-Agent': UA,
-      Accept: 'application/json',
-      'x-bbx-csrf-token': csrfToken,
-      'x-wh-client': WH_CLIENT,
-      Referer: 'https://www.willhaben.at/',
-      Cookie: cookieHeader,
-    },
-  });
+  const resp = await fetch(url, { headers });
 
   if (!resp.ok) return [];
 

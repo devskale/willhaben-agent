@@ -8,7 +8,7 @@
  * Marktplatz lives in search-marktplatz.ts.
  */
 
-import { getVisitorCookies } from "./auth.js";
+import { getPublicHeaders } from '../lib/http.js';
 import {
   parsePrice,
   parseEstateSize,
@@ -122,20 +122,11 @@ export const fetchImmoApi = async (
   filters?: ImmoFilters,
 ): Promise<{ items: ImmoApiItem[]; rowsFound: number }> => {
   try {
-    const { csrfToken, cookieHeader } = await getVisitorCookies();
+    const { headers } = await getPublicHeaders();
     const params = buildImmoParams(areaIds, rows, page, filters);
     const url = `https://www.willhaben.at/webapi/iad/search/atz/2/${searchId}?${params}`;
 
-    const resp = await fetch(url, {
-      headers: {
-        "User-Agent": UA,
-        Accept: "application/json",
-        "x-bbx-csrf-token": csrfToken,
-        "x-wh-client": WH_CLIENT,
-        Referer: "https://www.willhaben.at/iad/immobilien",
-        Cookie: cookieHeader,
-      },
-    });
+    const resp = await fetch(url, { headers });
 
     if (!resp.ok) return { items: [], rowsFound: 0 };
 
