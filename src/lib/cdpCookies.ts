@@ -152,37 +152,38 @@ export async function getCookiesViaCDP(options: CDPCookieOptions): Promise<{
     // Navigate to first URL to ensure cookies are loaded
     await page.goto(urls[0], { waitUntil: 'domcontentloaded' });
 
-    // Get all cookies
-    const cookies = await page.cookies();
+    // Use CDP Network.getAllCookies to get ALL cookies including httpOnly
+    // page.cookies() only returns non-httpOnly cookies
+    const client = await page.createCDPSession();
+    const { cookies } = await client.send('Network.getAllCookies');
+    await client.detach();
 
     // Filter by domain and names
-    let filteredCookies = cookies.filter((cookie) =>
+    const filteredCookies = cookies.filter((cookie: any) =>
       urls.some(url => {
-        const urlObj = new URL(url);
-        const hostname = urlObj.hostname;
+        const hostname = new URL(url).hostname;
+        const domain = cookie.domain.replace(/^\./, '');
         return (
           cookie.domain === hostname ||
           cookie.domain === `.${hostname}` ||
-          hostname.endsWith(cookie.domain.replace(/^\./, ''))
+          hostname.endsWith(domain)
         );
       })
     );
 
-    if (names && names.length > 0) {
-      filteredCookies = filteredCookies.filter(
-        (cookie) => names.includes(cookie.name)
-      );
-    }
+    const namedCookies = names && names.length > 0
+      ? filteredCookies.filter((c: any) => names.includes(c.name))
+      : filteredCookies;
 
     // Convert to our format
-    const result: CDPCookie[] = filteredCookies.map((cookie) => ({
+    const result: CDPCookie[] = namedCookies.map((cookie: any) => ({
       name: cookie.name,
       value: cookie.value,
       domain: cookie.domain,
       path: cookie.path,
       expires: typeof cookie.expires === 'number' ? cookie.expires : -1,
       httpOnly: cookie.httpOnly ?? false,
-      secure: cookie.secure,
+      secure: cookie.secure ?? false,
       sameSite: (cookie.sameSite as 'Strict' | 'Lax' | 'None') || 'None',
     }));
 

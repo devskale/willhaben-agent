@@ -420,9 +420,35 @@ POST https://www.willhaben.at/webapi/cdc/lastviewedads?verticalId={verticalId}&c
 
 ### User Folders (Favorites / Merkliste / Saved Items)
 
-Manage saved/favorited listings. Two access patterns exist:
+Manage saved/favorited listings. Three access patterns exist:
 
-#### Pattern 1: REST API (JSON) — CORS restricted
+#### Pattern 1: WebAPI Proxy (recommended for write operations) ✅
+
+```
+GET  /webapi/iad/userfolders/{userId}                            # list folders
+PUT  /webapi/iad/userfolders/savedAd/{userId}/{adId}             # move ad to folder
+```
+
+**Auth:** sweet-cookie session cookies + visitor cookies
+**Format:** JSON (GET), 204 No Content (PUT)
+**Required headers:** `x-bbx-csrf-token`, `x-wh-client: api@willhaben.at;responsive_web;server;1.0.0;desktop`, `Cache-Control: no-cache`
+
+**Move ad to folder (PUT):**
+```
+PUT /webapi/iad/userfolders/savedAd/20759581/1234567890
+Content-Type: text/plain
+Body: 10252485   (target folder ID)
+```
+Returns 204 on success.
+
+**Note:** sweet-cookie reads the Chrome cookie DB file. When Chrome is running, the session cookie
+(`BBX_JSESSIONID`, httpOnly) may be stale. For write operations, use CDP (`Network.getAllCookies`)
+to get the fresh session from the running browser. The `cdpCookies.ts` module already uses
+`Network.getAllCookies` to include httpOnly cookies.
+
+Discovered: 2026-05 via Chrome DevTools MCP (reqid=377, PUT returned 204)
+
+#### Pattern 2: REST API (JSON) — CORS restricted
 
 ```
 GET  https://api.willhaben.at/restapi/v2/userfolders/{userId}
