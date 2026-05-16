@@ -59,7 +59,7 @@ const COMMANDS = {
   moto: "Search motorrad/quad: whcli moto [keyword] [--type enduro] [--max-price 3000]",
   van: "Search nutzfahrzeug/pickup: whcli van [keyword] [--max-price 10000]",
   caravan: "Search wohnwagen/wohnmobil: whcli caravan [keyword] [--max-price 20000]",
-  similar: "Find similar listings: whcli similar <adId | product name> [--item] [--cheaper]",
+  similar: "Find similar listings: whcli similar <adId | product name> [--item]",
   'similar-items': "(deprecated) Use: whcli similar <product> --item",
   tree: "Browse category tree (optional: category ID to drill down)",
   wishlist: "Manage search wishlist (list / add / remove / toggle)",
@@ -716,7 +716,7 @@ async function cmdVehicleSearch(
 async function cmdSimilar(positional: string[], flags: Record<string, string | boolean>, format: OutputFormat) {
   const input = positional[0];
   if (!input) {
-    output({ error: "Usage: whcli similar <adId | 'product name'> [--item]\nExamples:\n  whcli similar 2097858592       # seller-based (same seller)\n  whcli similar 'pixel 4a'     # item-based (similar products)\n  whcli similar 'iphone 13' --cheaper  # cheaper alternatives" }, format);
+    output({ error: "Usage: whcli similar <adId | 'product name'> [--item]\nExamples:\n  whcli similar 2097858592       # seller-based (same seller)\n  whcli similar 'pixel 4a'       # similar products\n  whcli similar 2097858592 --item # content-based (same brand/price)" }, format);
     process.exit(1);
   }
 
@@ -774,27 +774,18 @@ async function cmdProductSimilar(query: string, rows: number, flags: Record<stri
   try {
     const result = await findSimilarProducts(query, rows);
 
-    // --cheaper flag: only show items cheaper than median
-    let items = result.items;
-    if (flags.cheaper && result.medianPrice) {
-      items = items.filter(i => i.price !== null && i.price < result.medianPrice!);
-    }
-
     if (format === "text") {
       console.log(`\n🔍  Similar to "${query}"\n`);
       console.log(`   Found ${result.referenceCount} references, median price: ${result.medianPrice ? `€${result.medianPrice}` : 'unknown'}`);
-      if (flags.cheaper && result.medianPrice) {
-        console.log(`   Filter: cheaper than €${result.medianPrice}`);
-      }
       console.log();
 
-      if (items.length === 0) {
+      if (result.items.length === 0) {
         console.log("   No similar products found.\n");
         return;
       }
 
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
+      for (let i = 0; i < result.items.length; i++) {
+        const item = result.items[i];
         const diff = item.priceDiff !== null
           ? (item.priceDiff > 0 ? ` (+€${item.priceDiff})` : ` (-€${Math.abs(item.priceDiff)})`)
           : '';
@@ -808,7 +799,7 @@ async function cmdProductSimilar(query: string, rows: number, flags: Record<stri
       return;
     }
 
-    output({ ...result, items }, format);
+    output(result, format);
   } catch (e) {
     output({ error: e instanceof Error ? e.message : "Failed to find similar products" }, format);
     process.exit(1);

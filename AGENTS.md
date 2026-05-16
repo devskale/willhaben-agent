@@ -38,7 +38,6 @@ pnpm start -- auth
 | `van [query]` | Search vans/SUVs (e.g. `van "transporter"`) |
 | `caravan [query]` | Search caravans/RVs (e.g. `caravan "hymer"`) |
 | `similar <query>` | Find similar products by name (e.g. `similar "pixel 4a"`) |
-| `similar <query> --cheaper` | Only cheaper alternatives |
 | `similar <adId>` | Seller-based similar listings (same seller) |
 | `similar <adId> --item` | Item-based similar listings (same category/brand/price) |
 | `version` / `-v` / `--version` | Show version |
@@ -94,7 +93,6 @@ whcli caravan "hymer" --text
 
 # Similar / alternative products
 whcli similar "pixel 4a"              # find similar products
-whcli similar "pixel 4a" --cheaper    # only cheaper alternatives
 whcli similar "iphone 13"             # phones competing with iPhone 13
 whcli similar 2097858592              # same seller's other listings
 whcli similar 2097858592 --item       # content-based (same brand/price)
