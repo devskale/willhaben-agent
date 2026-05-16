@@ -154,6 +154,36 @@ export async function downloadMerkliste(): Promise<MerklisteItem[]> {
   return items;
 }
 
+export interface MerklisteSummary {
+  count: number;
+  totalValue: number;
+  avgPrice: number;
+  minPrice: number;
+  maxPrice: number;
+  topItems: { title: string; price: number }[];
+  bottomItems: { title: string; price: number }[];
+}
+
+export function summarizeMerkliste(items: MerklisteItem[]): MerklisteSummary {
+  const parsePrice = (p: string): number => parseFloat(p.replace(',', '.')) || 0;
+  const prices = items.map(i => parsePrice(i.price));
+  const total = prices.reduce((s, p) => s + p, 0);
+
+  const ranked = items
+    .map((it, i) => ({ title: it.title, price: prices[i] }))
+    .sort((a, b) => b.price - a.price);
+
+  return {
+    count: items.length,
+    totalValue: Math.round(total * 100) / 100,
+    avgPrice: Math.round((total / items.length) * 100) / 100,
+    minPrice: prices.length ? Math.min(...prices) : 0,
+    maxPrice: prices.length ? Math.max(...prices) : 0,
+    topItems: ranked.slice(0, 10),
+    bottomItems: ranked.filter(r => r.price > 0).slice(-5).reverse(),
+  };
+}
+
 /**
  * Convert merkliste items to CSV string.
  */

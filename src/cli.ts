@@ -33,7 +33,7 @@ import {
   resolveVehicleFilter,
 } from "./agents/db.js";
 import { sendMessage, getConversations, getMessages } from "./agents/messaging.js";
-import { downloadMerkliste, itemsToCSV } from "./agents/merkliste.js";
+import { downloadMerkliste, itemsToCSV, summarizeMerkliste } from "./agents/merkliste.js";
 import { searchVehicles } from "./agents/search-vehicles.js";
 import { getSimilarListings } from "./agents/similar.js";
 import { getItemSimilarListings } from "./agents/similar-item.js";
@@ -72,7 +72,7 @@ const COMMANDS = {
   auth: "Check authentication status",
   message: "Send a message to a seller (requires authentication)",
   chats: "List conversations or view messages (optional: conversation UUID)",
-  favorites: "Manage favorites (list/add/remove)",
+  favorites: "Manage favorites (list/download/summary/add/remove)",
   history: "Show search history",
   overview: "Immo overview: stats by district/area for Mietwohnung, Eigentumswohnung, Haus",
   help: "Show this help",
@@ -522,6 +522,36 @@ async function cmdFavorites(positional: string[], flags: Record<string, string |
       output({ error: "Invalid listing JSON" }, format);
       process.exit(1);
     }
+    return;
+  }
+
+  if (subcommand === "summary") {
+    const items = await downloadMerkliste();
+    const summary = summarizeMerkliste(items);
+
+    if (format === "text") {
+      console.log(`\n📦  Merkliste Zusammenfassung\n`);
+      console.log(`   Teile:         ${summary.count}`);
+      console.log(`   Gesamtwert:    €${summary.totalValue.toFixed(2)}`);
+      console.log(`   Durchschnitt:  €${summary.avgPrice.toFixed(2)}`);
+      console.log(`   Spanne:        €${summary.minPrice.toFixed(2)} – €${summary.maxPrice.toFixed(2)}`);
+      console.log();
+      console.log(`   Top 10 (teuerste):`);
+      summary.topItems.forEach((it, i) => {
+        console.log(`   ${(i + 1 + '.').padEnd(4)} €${it.price.toFixed(2).padStart(8)}  ${it.title.substring(0, 55)}`);
+      });
+      if (summary.bottomItems.length) {
+        console.log();
+        console.log(`   Günstigste:`);
+        summary.bottomItems.forEach((it, i) => {
+          console.log(`   ${(i + 1 + '.').padEnd(4)} €${it.price.toFixed(2).padStart(8)}  ${it.title.substring(0, 55)}`);
+        });
+      }
+      console.log();
+      return;
+    }
+
+    output(summary, format);
     return;
   }
 

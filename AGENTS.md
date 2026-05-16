@@ -32,6 +32,7 @@ pnpm start -- auth
 | `favorites list` | List local starred items (SQLite) |
 | `favorites download` | Download merkliste from willhaben (all items) |
 | `favorites download --csv` | Download merkliste as CSV |
+| `favorites summary` | Merkliste summary (count, total, top/bottom items) |
 | `history` | Show search history with stats |
 | `car [query]` | Search cars (e.g. `car "golf" --max-price 5000 --text`) |
 | `moto [query]` | Search motorcycles (e.g. `moto "enduro" --max-price 3000`) |
