@@ -60,6 +60,11 @@ export async function cmdSearch(
       if (propertyType) items = filterByType(items, propertyType);
       items = filterBySize(items, minSize, maxSize);
       items = filterByRooms(items, rooms, minRooms);
+    } else {
+      // Immo: server-side filters work for type-specific searchIds,
+      // but searchId=90 (alle) ignores NO_OF_ROOMS_BUCKET — apply client-side fallback.
+      items = filterByRooms(items, rooms, minRooms);
+      items = filterBySize(items, minSize, maxSize);
     }
 
     const keywords = strFlag(flags, 'keyword');

@@ -306,7 +306,7 @@ export const getImmoOverview = async (
 
     for (const st of searchTypes) {
       try {
-        const { items, rowsFound } = await fetchImmoApi(st.searchId, [area.areaId], rows, 1);
+        const { items, rowsFound } = await fetchImmoApi(st.searchId, [area.areaId], rows, 1, filters);
 
         const prices: number[] = [];
         const sizes: number[] = [];

@@ -169,16 +169,16 @@ describe('filterByRooms', () => {
   });
 
   it('filters by exact rooms', () => {
-    expect(filterByRooms(items, 3)).toHaveLength(2); // 3, null
+    expect(filterByRooms(items, 3)).toHaveLength(1); // only 3
   });
 
   it('filters by min rooms', () => {
-    expect(filterByRooms(items, undefined, 3)).toHaveLength(3); // 3, 4, null
+    expect(filterByRooms(items, undefined, 3)).toHaveLength(2); // 3, 4
   });
 
-  it('keeps items with null rooms', () => {
+  it('filters out items with null rooms when filter is active', () => {
     const result = filterByRooms(items, 3);
-    expect(result.some(i => i.rooms === null)).toBe(true);
+    expect(result.every(i => i.rooms !== null)).toBe(true);
   });
 });
 

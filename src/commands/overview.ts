@@ -20,15 +20,26 @@ export async function cmdOverview(
   const parentId = intFlag(flags, 'parent');
   if (parentId) areaIds = getChildAreas(parentId);
 
-  const { filters: activeFilters } = buildImmoFilters(flags);
+  // overview is always immobilien — force the vertical flag
+  const immoFlags = { ...flags, vertical: 'immobilien' };
+  const { filters: activeFilters, searchId } = buildImmoFilters(immoFlags);
+
+  // If --type resolves to a specific searchId, only show that type
+  const allTypes: { searchId: number; label: string }[] = [
+    { searchId: 131, label: 'Mietwohnung' },
+    { searchId: 101, label: 'Eigentumswohnung' },
+    { searchId: 102, label: 'Haus kaufen' },
+  ];
+  const searchTypes = searchId ? allTypes.filter(t => t.searchId === searchId) : allTypes;
 
   try {
-    const overview = await getImmoOverview(areaIds, undefined, 30, activeFilters);
+    const overview = await getImmoOverview(areaIds, searchTypes, 30, activeFilters);
 
     if (format === 'text') {
-      for (const [typeName, typeLabel] of [['Mietwohnung', 'MIETWOHNUNGEN'], ['Eigentumswohnung', 'EIGENTUMSWOHNUNGEN'], ['Haus kaufen', 'HÄUSER KAUFEN']] as [string, string][]) {
+      const typeLabels: Record<string, string> = { 'Mietwohnung': 'MIETWOHNUNGEN', 'Eigentumswohnung': 'EIGENTUMSWOHNUNGEN', 'Haus kaufen': 'HÄUSER KAUFEN' };
+      for (const { label: typeName } of searchTypes) {
         console.log(`\n  ${'═'.repeat(90)}`);
-        console.log(`  ${typeLabel}`);
+        console.log(`  ${typeLabels[typeName] || typeName.toUpperCase()}`);
         console.log(`  ${'═'.repeat(90)}`);
         console.log();
         console.log(`  ${'Bezirk'.padEnd(24)} ${'Angebote'.padStart(8)} ${'Preis Median'.padStart(14)} ${'m² Median'.padStart(10)} ${'€/m² Median'.padStart(12)} ${'Preis Min'.padStart(12)} ${'Preis Max'.padStart(12)}`);

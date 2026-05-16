@@ -111,7 +111,7 @@ export function filterByRooms(
   if (rooms === undefined && minRooms === undefined) return items;
   return items.filter((item) => {
     const r = item.rooms;
-    if (r === null) return true; // unknown → keep
+    if (r === null) return false; // unknown rooms → filter out when filter is active
     const numR = typeof r === "string" ? parseInt(r, 10) : r;
     if (isNaN(numR)) return false;
     if (rooms !== undefined && numR !== rooms) return false;
