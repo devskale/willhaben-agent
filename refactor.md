@@ -14,20 +14,13 @@
 
 ---
 
-## P2 — Tests (revised)
+## P2 — Tests (revised) ✅
 
-### What changed
-Original P2 had 5 targets. Reflected and cut to 3 — the ones that catch real bugs, not just mirror implementation details:
-- **Dropped price parsing** — thin wrapper around `@norbulcz/num-parse`, not our bug surface
-- **Dropped vehicle category resolution** — needs real SQLite setup, the DB query is straightforward
-- **Dropped merkliste HTML parsing** — would need snapshot HTML fixtures that rot fast
+- [x] **Similar product scoring** — 17 tests: extractProfile (median, keywords, null prices), scoreItem (price tiers, keyword overlap, phone bonus/penalty, nearby, private, reference)
+- [x] **Analysis filters** — 27 tests: filterByKeyword, excludeByKeyword, classifyPropertyType, filterBySize, filterByRooms, filterByPrice
+- [x] **Search listing parsing** — skipped: already covered by 6 existing tests in search.test.ts; internal parse functions not exported, duplicating would be code smell
 
-### What's left — the real value
-- [ ] **Similar product scoring** (similar-product.ts) — pure functions with edge cases (empty refs, price match, keyword overlap). Easy to test, high regression value.
-- [ ] **Search listing parsing** (search-marktplatz.ts parseListing/parseAttributes) — the core data extraction from raw API JSON. If attributes rename, tests catch it. Already have 6 tests, add more for attribute edge cases.
-- [ ] **Analysis filters** (lib/analysis.ts) — filterByKeyword, excludeByKeyword, filterBySize etc. Pure functions, easy to test, used in search + analyze.
-- [ ] Type-check + all tests pass
-- [ ] Commit + push
+**Total: 56 tests across 4 test files, all passing.**
 
 ---
 
