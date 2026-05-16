@@ -33,6 +33,10 @@ pnpm start -- auth
 | `favorites download` | Download merkliste from willhaben (all items) |
 | `favorites download --csv` | Download merkliste as CSV |
 | `favorites summary` | Merkliste summary (count, total, top/bottom items) |
+| `favorites folders` | List merkliste folders (with item counts) |
+| `favorites create-folder <name>` | Create a new folder |
+| `favorites save <adId> [--folder <name\|id>]` | Save ad to folder (default: Merkliste) |
+| `favorites remove <adId>` | Remove ad from merkliste |
 | `history` | Show search history with stats |
 | `car [query]` | Search cars (e.g. `car "golf" --max-price 5000 --text`) |
 | `moto [query]` | Search motorcycles (e.g. `moto "enduro" --max-price 3000`) |
@@ -85,6 +89,11 @@ whcli wishlist list
 # Favorites / Merkliste (auth required)
 whcli favorites download                # JSON, all items
 whcli favorites download --csv > list.csv  # CSV export
+whcli favorites folders                  # list folders
+whcli favorites save 2097858592           # save to default folder
+whcli favorites save 2097858592 --folder pixel  # save to named folder
+whcli favorites remove 2097858592         # remove from merkliste
+whcli favorites create-folder myfolder    # create new folder
 
 # Vehicle search (DB-backed categories + fuzzy filter resolution)
 whcli car "golf" --max-price 5000 --text

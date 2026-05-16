@@ -25,6 +25,13 @@ pnpm start -- search "iphone 15"
 | `wishlist list` | Show search wishlist |
 | `locations` | List Austrian states |
 | `favorites list` | List starred items |
+| `favorites download` | Download merkliste (JSON) |
+| `favorites download --csv` | Download merkliste as CSV |
+| `favorites summary` | Merkliste summary (count, total, top/bottom) |
+| `favorites folders` | List merkliste folders |
+| `favorites save <adId> [--folder <name>]` | Save ad to folder |
+| `favorites remove <adId>` | Remove ad from merkliste |
+| `favorites create-folder <name>` | Create new folder |
 | `history` | Show search history |
 | `car [query]` | Search cars (filters: `--max-price`, `--sort`, `--text`) |
 | `moto [query]` | Search motorcycles |

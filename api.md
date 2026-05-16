@@ -422,31 +422,49 @@ POST https://www.willhaben.at/webapi/cdc/lastviewedads?verticalId={verticalId}&c
 
 Manage saved/favorited listings. Three access patterns exist:
 
-#### Pattern 1: WebAPI Proxy (recommended for write operations) ✅
+#### Pattern 1: WebAPI Proxy (recommended for all operations) ✅
 
 ```
-GET  /webapi/iad/userfolders/{userId}                            # list folders
-PUT  /webapi/iad/userfolders/savedAd/{userId}/{adId}             # move ad to folder
+GET    /webapi/iad/userfolders/{userId}                           # list folders
+POST   /webapi/iad/userfolders/save/{userId}/{folderId}/{adId}   # save ad to folder
+DELETE /webapi/iad/userfolders/savedAd/{userId}/{adId}            # remove ad from merkliste
+POST   /webapi/iad/userfolders/{userId}                          # create folder
 ```
 
 **Auth:** sweet-cookie session cookies + visitor cookies
-**Format:** JSON (GET), 204 No Content (PUT)
 **Required headers:** `x-bbx-csrf-token`, `x-wh-client: api@willhaben.at;responsive_web;server;1.0.0;desktop`, `Cache-Control: no-cache`
 
-**Move ad to folder (PUT):**
+**List folders (GET):**
 ```
-PUT /webapi/iad/userfolders/savedAd/20759581/1234567890
-Content-Type: text/plain
-Body: 10252485   (target folder ID)
+GET /webapi/iad/userfolders/20759581
+→ 200 { "advertFolders": [{ "id": 785429, "defaultFolder": true, "name": "Merkliste", "advertCount": 62 }, ...] }
 ```
-Returns 204 on success.
 
-**Note:** sweet-cookie reads the Chrome cookie DB file. When Chrome is running, the session cookie
-(`BBX_JSESSIONID`, httpOnly) may be stale. For write operations, use CDP (`Network.getAllCookies`)
-to get the fresh session from the running browser. The `cdpCookies.ts` module already uses
-`Network.getAllCookies` to include httpOnly cookies.
+**Save ad to folder (POST):** ✅ Works with sweet-cookie!
+```
+POST /webapi/iad/userfolders/save/20759581/10252553/2097858592
+Content-Length: 0
+→ 200 { "savedInFolder": true, "contextLinkList": [{ "id": "removeAdFromFolder", "uri": "..." }] }
+```
 
-Discovered: 2026-05 via Chrome DevTools MCP (reqid=377, PUT returned 204)
+**Remove ad from merkliste (DELETE):** ✅ Works with sweet-cookie!
+```
+DELETE /webapi/iad/userfolders/savedAd/20759581/2097858592
+→ 204 No Content
+```
+
+**Create folder (POST):**
+```
+POST /webapi/iad/userfolders/20759581
+Content-Type: application/json
+Body: { "name": "my folder", "description": "" }
+→ 200 { "id": 10252578, "name": "my folder", ... }
+```
+
+**Note:** The `userId` in URLs is the **numeric** user ID extracted from the `BBX_JSESSIONID` cookie
+(format: `20759581__<uuid>`). The `checkAuth()` user.id returns a UUID, so extract the numeric ID from cookies.
+
+Discovered: 2026-05-15 via Chrome DevTools MCP (reqid=700 for save, DELETE/savedAd for remove)
 
 #### Pattern 2: REST API (JSON) — CORS restricted
 
