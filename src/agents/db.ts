@@ -605,6 +605,14 @@ export function seedVehicleCategories(): void {
       { code: '3', label: 'Enduro', count: 0 },
       { code: '19', label: 'Cafe Racer', count: 0 },
       { code: '11', label: 'Rennsport / Rennstrecke', count: 0 },
+      { code: '6', label: 'Moped / Mofa', count: 0 },
+      { code: '7', label: 'Motocross', count: 0 },
+      { code: '9', label: 'Gespann / Beiwagen', count: 0 },
+      { code: '13', label: 'Trike', count: 0 },
+      { code: '15', label: 'Sonstige', count: 0 },
+      { code: '22', label: 'Pocket Bike', count: 0 },
+      { code: '23', label: 'Schneemobil', count: 0 },
+      { code: '26', label: 'Trial', count: 0 },
     ];
     for (const cat of motoCategories) {
       stmtInsertFilterCategory.run({
