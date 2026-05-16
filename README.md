@@ -42,6 +42,7 @@ pnpm start -- search "iphone 15"
 | `similar <adId> --item` | Item-based similar listings |
 | `overview [--location] [--type]` | Immobilien market snapshot (median price, €/m² per district) |
 | `analyze <query> --vertical immobilien` | Real estate analysis (by type, best value, private sellers) |
+| `immo-filters [--type <type>]` | List available server-side immo filters (run first to discover params) |
 | `version` / `-v` | Show version |
 
 ## Search Flags

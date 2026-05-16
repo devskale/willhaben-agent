@@ -42,6 +42,7 @@ pnpm start -- auth
 | `moto [query]` | Search motorcycles (e.g. `moto "enduro" --max-price 3000`) |
 | `van [query]` | Search vans/SUVs (e.g. `van "transporter"`) |
 | `caravan [query]` | Search caravans/RVs (e.g. `caravan "hymer"`) |
+| `immo-filters [--type <type>]` | List available server-side immo filters (run first to discover params) |
 | `similar <query>` | Find similar products by name (e.g. `similar "pixel 4a"`) |
 | `similar <adId>` | Seller-based similar listings (same seller) |
 | `similar <adId> --item` | Item-based similar listings (same category/brand/price) |
@@ -94,6 +95,12 @@ whcli favorites save 2097858592           # save to default folder
 whcli favorites save 2097858592 --folder pixel  # save to named folder
 whcli favorites remove 2097858592         # remove from merkliste
 whcli favorites create-folder myfolder    # create new folder
+
+# Immobilien — discover available server-side filters first
+whcli immo-filters                       # default: eigentumswohnung
+whcli immo-filters --type haus --text     # filters for Haus kaufen
+# Then use discovered params in search:
+whcli search "wohnung" --vertical immobilien --type mietwohnung --location 1110 --max-price 1500 --text
 
 # Vehicle search (DB-backed categories + fuzzy filter resolution)
 whcli car "golf" --max-price 5000 --text
