@@ -529,6 +529,19 @@ const stmtInsertFilterCategory = db.prepare(
   'INSERT OR REPLACE INTO vehicle_filter_categories (subvertical_search_id, filter_name, code, label, count) VALUES (@subverticalSearchId, @filterName, @code, @label, @count)'
 );
 
+/** Seed filter values discovered from the API into the DB for --filter resolution. */
+export const seedFilterValues = (searchId: number, filterName: string, values: Array<{ label: string; code: string }>) => {
+  for (const v of values) {
+    stmtInsertFilterCategory.run({
+      subverticalSearchId: searchId,
+      filterName,
+      code: v.code,
+      label: v.label,
+      count: 0,
+    });
+  }
+};
+
 const stmtGetSubverticals = db.prepare(
   'SELECT search_id, name, slug, product_id, ad_type_id, url_path, count FROM vehicle_subverticals ORDER BY count DESC'
 );

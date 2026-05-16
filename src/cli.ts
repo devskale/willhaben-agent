@@ -7,7 +7,7 @@
  */
 
 import { checkAuth } from './agents/auth.js';
-import { seedCategories, seedRegions, seedVehicleCategories } from './agents/db.js';
+import { seedCategories, seedRegions, seedVehicleCategories, seedFilterValues } from './agents/db.js';
 import { parseArgs, getFormat, output, type OutputFormat } from './commands/shared.js';
 import { cmdSearch } from './commands/search.js';
 import { cmdView, cmdImages } from './commands/view.js';
@@ -64,7 +64,7 @@ async function main() {
     process.exit(0);
   }
 
-  const { command, positional, flags } = parseArgs(args);
+  const { command, positional, flags, multiFlags } = parseArgs(args);
   const format = getFormat(flags);
 
   if (AUTH_COMMANDS.has(command)) {
@@ -76,7 +76,7 @@ async function main() {
     case 'car':
     case 'moto':
     case 'van':
-    case 'caravan':       return await cmdVehicleSearch(command, positional, flags, format);
+    case 'caravan':       return await cmdVehicleSearch(command, positional, flags, format, multiFlags);
     case 'similar':       return await cmdSimilar(positional, flags, format);
     case 'similar-items': return await cmdSimilarItems(positional, flags, format);
     case 'tree':          return await cmdTree(positional, flags, format);
@@ -128,7 +128,9 @@ async function cmdFilters(vertical: 'immobilien' | 'vehicle', positional: string
       if (f.group !== lastGroup) { console.log(`  ${f.group}`); lastGroup = f.group; }
       const param = f.params.join(', ');
       const sel = f.selectionType === 'MULTI_SELECT' ? 'multi' : 'single';
+      const vals = (f.values || []).slice(0, 8).join(', ');
       console.log(`    ${f.label.padEnd(20)} ${param.padEnd(38)} [${f.type}] ${sel}`);
+      if (vals) console.log(`      → ${vals}${(f.values || []).length > 8 ? ' ...' : ''}`);
     }
     console.log();
     return;
@@ -136,11 +138,57 @@ async function cmdFilters(vertical: 'immobilien' | 'vehicle', positional: string
   output(filters, format);
 }
 
-interface FilterSchema { group: string; id: string; label: string; type: string; selectionType: string; params: string[] }
+interface FilterSchema { group: string; id: string; label: string; type: string; selectionType: string; params: string[]; values?: string[] }
 
 async function fetchFilterSchema(vertical: 'immobilien' | 'vehicle', searchId: number): Promise<FilterSchema[]> {
   const vId = vertical === 'immobilien' ? 2 : 3;
   const { headers } = await getPublicHeaders();
+
+  // Vehicles: fetch from SSR detailsuche page to get groupedPossibleValues with labels + codes
+  if (vertical === 'vehicle') {
+    const paths: Record<number, string> = { 2: 'auto', 4: 'motorrad', 50: 'nutzfahrzeug-pickup', 52: 'wohnwagen-wohnmobile' };
+    const path = paths[searchId] || 'auto';
+    const htmlResp = await fetch(`https://www.willhaben.at/iad/gebrauchtwagen/${path}/detailsuche`, { headers: { ...headers, Accept: 'text/html' } });
+    if (htmlResp.ok) {
+      const html = await htmlResp.text();
+      const match = html.match(/<script id="__NEXT_DATA__"[^>]*>(.*?)<\/script>/s);
+      if (match) {
+        try {
+          const d = JSON.parse(match[1]);
+          const r = d.props?.pageProps?.initialSearchResult;
+          if (r?.navigatorGroups) {
+            const result: FilterSchema[] = [];
+            for (const group of r.navigatorGroups) {
+              for (const nav of group.navigatorList || []) {
+                if (nav.id === 'searchId' || !nav.label) continue;
+                const params = (nav.urlConstructionInformation?.urlParams || []).map((p: any) => p.urlParameterName);
+                const gvals = nav.groupedPossibleValues || [];
+                const values = gvals.flatMap((g: any) => (g.possibleValues || []).map((v: any) => {
+                  const code = v.urlParamRepresentationForValue?.[0]?.value || v.id;
+                  return `${v.label}=${code}`;
+                }));
+                // Seed discovered values into DB for --filter resolution
+                const paramKey = params[0];
+                if (values.length > 0 && paramKey) {
+                  const rawVals = gvals.flatMap((g: any) => (g.possibleValues || []).map((v: any) => ({
+                    label: v.label, code: v.urlParamRepresentationForValue?.[0]?.value || v.id,
+                  })));
+                  seedFilterValues(searchId, paramKey, rawVals);
+                }
+                result.push({
+                  group: group.label, id: nav.id, label: nav.label, type: nav.navigatorType,
+                  selectionType: nav.navigatorSelectionType, params, values,
+                });
+              }
+            }
+            return result;
+          }
+        } catch { /* fall through to JSON API */ }
+      }
+    }
+  }
+
+  // Fallback / Immobilien: JSON API (no values, just param names)
   const resp = await fetch(
     `https://www.willhaben.at/webapi/ad-search/search/atz/${vId}/${searchId}?rows=1`,
     { headers },

@@ -5,12 +5,14 @@
 import { searchVehicles } from '../agents/search-vehicles.js';
 import { resolveLocationInput } from '../agents/locations.js';
 import { output, type OutputFormat } from './shared.js';
+import { getVehicleFilterCategories } from '../agents/db.js';
 
 export async function cmdVehicleSearch(
   command: string,
   positional: string[],
   flags: Record<string, string | boolean>,
   format: OutputFormat,
+  multiFlags?: Record<string, string[]>,
 ) {
   const keyword = positional.join(' ');
   const priceTo = typeof flags['max-price'] === 'string' ? parseFloat(flags['max-price']) : undefined;
@@ -22,6 +24,19 @@ export async function cmdVehicleSearch(
   const transmission = typeof flags.transmission === 'string' ? flags.transmission : undefined;
   const category = typeof flags.type === 'string' ? flags.type : undefined;
   const isPrivate = flags.private === true;
+  const rawFilters = multiFlags?.['filter'] || undefined;
+  // Resolve label→code for --filter values using DB-seeded data
+  const resolvedFilters = (rawFilters || []).map(f => {
+    const eq = f.indexOf('=');
+    if (eq < 0) return f;
+    const key = f.substring(0, eq);
+    const val = f.substring(eq + 1);
+    // Try resolving label→code from DB
+    const cats = getVehicleFilterCategories(
+      command === 'moto' ? 4 : command === 'van' ? 50 : command === 'caravan' ? 52 : 2, key);
+    const match = cats.find(c => c.label.toLowerCase() === val.toLowerCase());
+    return match ? `${key}=${match.code}` : f; // pass through if no match
+  });
 
   let areaIds: number[] | undefined;
   if (typeof flags.location === 'string') {
@@ -37,6 +52,7 @@ export async function cmdVehicleSearch(
       keyword: keyword || undefined,
       priceFrom, priceTo, yearFrom, yearTo, mileageTo,
       fuel, transmission, category, areaIds, isPrivate, rows: 30,
+      rawFilters: resolvedFilters.length > 0 ? resolvedFilters : undefined,
     });
 
     const sortBy = typeof flags.sort === 'string' ? flags.sort : undefined;

@@ -32,6 +32,7 @@ export interface VehicleFilters {
   isPrivate?: boolean;
   rows?: number;
   page?: number;
+  rawFilters?: string[]; // raw KEY=VALUE pairs passed through as-is
 }
 
 export interface VehicleListing {
@@ -95,6 +96,12 @@ async function buildVehicleParams(
     for (const aid of filters.areaIds) parts.push(`areaId=${aid}`);
   }
   if (filters.isPrivate !== undefined) parts.push(`ISPRIVATE=${filters.isPrivate ? '1' : '0'}`);
+
+  // Raw filter pass-through: --filter KEY=VALUE
+  for (const raw of filters.rawFilters || []) {
+    const eq = raw.indexOf('=');
+    if (eq > 0) parts.push(raw);
+  }
 
   // Resolve named filters from DB
   const sid = subvertical.searchId;

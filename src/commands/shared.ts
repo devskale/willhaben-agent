@@ -16,9 +16,11 @@ export function parseArgs(args: string[]): {
   command: string;
   positional: string[];
   flags: Record<string, string | boolean>;
+  multiFlags: Record<string, string[]>;
 } {
   const positional: string[] = [];
   const flags: Record<string, string | boolean> = {};
+  const multiFlags: Record<string, string[]> = {};
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -27,6 +29,8 @@ export function parseArgs(args: string[]): {
       const next = args[i + 1];
       if (next && !next.startsWith('-')) {
         flags[key] = next;
+        if (!multiFlags[key]) multiFlags[key] = [];
+        multiFlags[key].push(next);
         i++;
       } else {
         flags[key] = true;
@@ -39,7 +43,7 @@ export function parseArgs(args: string[]): {
     }
   }
 
-  return { command: positional[0] || 'help', positional: positional.slice(1), flags };
+  return { command: positional[0] || 'help', positional: positional.slice(1), flags, multiFlags };
 }
 
 export function getFormat(flags: Record<string, string | boolean>): OutputFormat {
