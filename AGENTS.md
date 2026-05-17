@@ -7,9 +7,17 @@ Auth via Chrome cookies (`sweet-cookie`), image CDN is fully public (no auth).
 
 ```bash
 pnpm install
-pnpm start -- search "iphone 15"
-pnpm start -- view 12345678
-pnpm start -- auth
+pnpm build && pnpm link --global   # install `whcli` globally
+
+# Now use directly:
+whcli search "iphone 15"
+whcli view 12345678
+whcli auth
+
+# Or without global install:
+npx tsx src/cli.ts auth
+
+# ⚠️ Never use `pnpm start --` from agents — use `whcli` or `npx tsx src/cli.ts` directly
 ```
 
 ## Commands

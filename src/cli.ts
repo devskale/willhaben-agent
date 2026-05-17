@@ -18,8 +18,7 @@ import { cmdAnalyze, cmdCompare } from './commands/analyze.js';
 import { cmdOverview } from './commands/overview.js';
 import { cmdMessage, cmdChats } from './commands/chats.js';
 import { cmdAuth, cmdSeller, cmdLocations, cmdHistory, cmdWishlist, cmdTree, cmdHelp } from './commands/misc.js';
-import { getImmoFilters } from './agents/search-immo.js';
-import { getVehicleSubverticals } from './agents/search-vehicles.js';
+// Filter schemas are fetched inline in cmdFilters() — no external imports needed
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -188,7 +187,47 @@ async function fetchFilterSchema(vertical: 'immobilien' | 'vehicle', searchId: n
     }
   }
 
-  // Fallback / Immobilien: JSON API (no values, just param names)
+  // Fallback / Immobilien: try SSR page for values, then JSON API for schema only
+  if (vertical === 'immobilien') {
+    const immoPaths: Record<number, string> = { 90: 'immobilien', 131: 'mietwohnung-angebote', 101: 'eigentumswohnung/detailsuche', 102: 'haus-kaufen/detailsuche', 132: 'haus-mieten/detailsuche', 14: 'grundstueck/detailsuche', 15: 'gewerbeimmobilie-kaufen/detailsuche', 16: 'gewerbeimmobilie-mieten/detailsuche', 42: 'neubau/detailsuche', 35: 'sonstige-immobilien/detailsuche' };
+    const immoPath = immoPaths[searchId] || 'immobilien';
+    const prefix = searchId === 90 ? 'iad' : 'iad/immobilien';
+    const htmlResp = await fetch(`https://www.willhaben.at/${prefix}/${immoPath}`, { headers: { ...headers, Accept: 'text/html' } });
+    if (htmlResp.ok) {
+      const html = await htmlResp.text();
+      const match = html.match(/<script id="__NEXT_DATA__"[^>]*>(.*?)<\/script>/s);
+      if (match) {
+        try {
+          const d = JSON.parse(match[1]);
+          const r = d.props?.pageProps?.searchResult || d.props?.pageProps?.initialSearchResult;
+          if (r?.navigatorGroups) {
+            const result: FilterSchema[] = [];
+            for (const group of r.navigatorGroups) {
+              for (const nav of group.navigatorList || []) {
+                if (nav.id === 'searchId' || !nav.label) continue;
+                const params = (nav.urlConstructionInformation?.urlParams || []).map((p: any) => p.urlParameterName);
+                const gvals = nav.groupedPossibleValues || [];
+                const rawVals: Array<{ label: string; code: string }> = [];
+                const values = gvals.flatMap((g: any) => (g.possibleValues || []).map((v: any) => {
+                  const code = v.urlParamRepresentationForValue?.[0]?.value || v.id;
+                  rawVals.push({ label: v.label, code });
+                  return `${v.label}=${code}`;
+                }));
+                if (values.length > 0 && params[0]) seedFilterValues(searchId, params[0], rawVals);
+                result.push({
+                  group: group.label, id: nav.id, label: nav.label, type: nav.navigatorType,
+                  selectionType: nav.navigatorSelectionType, params, values,
+                });
+              }
+            }
+            return result;
+          }
+        } catch { /* fall through */ }
+      }
+    }
+  }
+
+  // Final fallback: JSON API (no values, just param names)
   const resp = await fetch(
     `https://www.willhaben.at/webapi/ad-search/search/atz/${vId}/${searchId}?rows=1`,
     { headers },

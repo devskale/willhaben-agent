@@ -24,6 +24,7 @@ export function parseArgs(args: string[]): {
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
+    if (arg === '--') continue; // skip bare -- from pnpm/npm passthrough
     if (arg.startsWith('--')) {
       const key = arg.slice(2);
       const next = args[i + 1];

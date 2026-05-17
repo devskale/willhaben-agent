@@ -54,4 +54,5 @@ coverage/
 medien/
 *.jpg
 *.png
-!src/**/*.ts
+!src/**/*.tsanalysen/
+analyse/
