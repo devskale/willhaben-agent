@@ -56,3 +56,8 @@ medien/
 *.png
 !src/**/*.tsanalysen/
 analyse/
+
+# Debug scripts
+debug-*.ts
+debug-*.mjs
+pnpm-workspace.yaml
