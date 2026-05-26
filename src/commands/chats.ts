@@ -43,7 +43,8 @@ export async function cmdChats(
   flags: Record<string, string | boolean>,
   format: OutputFormat,
 ) {
-  const conversationId = positional[0];
+  // Ignore "list" keyword — it just means "show all conversations"
+  const conversationId = positional[0] && positional[0] !== 'list' ? positional[0] : undefined;
   try {
     if (conversationId) {
       output(await getMessages(conversationId), format);

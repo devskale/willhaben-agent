@@ -1,6 +1,6 @@
 {
   "name": "whcli",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "CLI for willhaben.at - agent automation ready",
   "type": "module",
   "bin": {
@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@norbulcz/num-parse": "^0.1.0",
-    "@steipete/sweet-cookie": "^0.2.0",
+    "@steipete/sweet-cookie": "^0.3.0",
     "better-sqlite3": "^12.6.2",
     "cheerio": "^1.1.2",
     "playwright": "^1.58.2",
